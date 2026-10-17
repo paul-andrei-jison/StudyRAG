@@ -21,13 +21,14 @@ from .answers import ANSWERED, ERROR, NOT_IN_PAPERS_STATUS, ChatAnswer, Source
 from .budget import TokenEstimator, minimum_context, plan_budget, resolve_context_tokens, too_small
 from .citations import CitationFilter
 from .expand import expand_query, fuse_searches
-from .gate import Assessment, GateConfig, assess
+from .gate import Assessment, GateConfig, assess, coverage
 from .prompt import NOT_IN_PAPERS, SYSTEM_PROMPT, build_messages, format_source
 from .rewrite import Turn, rewrite_query
 from .select import PER_DOCUMENT, PER_PAGE, SOURCE_COUNT, spread
 
 REFUSAL_TEXT = "Your papers don't seem to cover this question, so I won't guess."
 CLOSEST_SOURCES = 3
+LIKELY_SOURCE_COVERAGE = 0.6   # share of the answer's content words a source must contain to be named as the likely one
 HANDWRITING_QUESTION = re.compile(
     r"\b(name|names|date|dates|score|scores|section|teacher|grade|answer key|which letter|what letter|my answers?|i answered|who wrote)\b",
     re.IGNORECASE)
@@ -279,7 +280,7 @@ class ChatSession:
         answer.uncited = not answer.cited
         if answer.invalid_citations:
             answer.warnings.append(f"removed citation(s) that point at no source: {answer.invalid_citations}")
-        notes = self._notes(question, answer)
+        notes = self._notes(question, answer, body)
         answer.notes = notes
         answer.text = body + ("\n\n" + "\n".join(notes) if notes else "")
         if notes:
@@ -288,7 +289,7 @@ class ChatSession:
         self._remember(question, body, answer)
         yield answer
 
-    def _notes(self, question: str, answer: ChatAnswer) -> list[str]:
+    def _notes(self, question: str, answer: ChatAnswer, body: str = "") -> list[str]:
         notes: list[str] = []
         cited = answer.cited_sources
         for source in cited:
@@ -296,10 +297,28 @@ class ChatSession:
                 why = f" ({'; '.join(source.problems)})" if source.problems else ""
                 notes.append(f"Note: page {source.page_number} of '{source.title or source.file_path}' was hard to read, check the photo{why}.")
         if answer.uncited:
-            notes.append("Note: no source was cited for this answer, so check it against your papers.")
+            likely = self._likely_source(body, answer.sources)
+            if likely is not None:
+                answer.likely_source = likely.number
+                notes.append(f"Note: no source was cited; the wording matches SOURCE {likely.number} "
+                             f"('{likely.title or likely.file_path}', page {likely.page_number}). Check it against that page.")
+            else:
+                notes.append("Note: no source was cited for this answer, so check it against your papers.")
         if cited and HANDWRITING_QUESTION.search(question):  # the question is about the kind of field that is handwritten
             notes.append(HANDWRITING_NOTE)
         return notes
+
+    @staticmethod
+    def _likely_source(body: str, sources: Sequence[Source]) -> Source | None:
+        """For an answer that cited nothing: the one source whose text contains most of the answer's content words.
+
+        Deterministic and shown only as a hint ("the wording matches"), never as a citation."""
+        if not body.strip() or not sources:
+            return None
+        scored = sorted(((coverage(body, s.text), -s.number, s) for s in sources), key=lambda x: (x[0], x[1]), reverse=True)
+        best = scored[0]
+        runner_up = scored[1][0] if len(scored) > 1 else 0.0
+        return best[2] if best[0] >= LIKELY_SOURCE_COVERAGE and best[0] > runner_up else None
 
     def _remember(self, question: str, text: str, answer: ChatAnswer) -> None:
         self.history.append(Turn(question, text))

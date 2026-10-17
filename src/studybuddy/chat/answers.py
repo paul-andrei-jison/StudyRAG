@@ -51,6 +51,7 @@ class ChatAnswer:
     cited: list[int] = field(default_factory=list)
     invalid_citations: list[int] = field(default_factory=list)   # numbers that named no source (stripped)
     uncited: bool = False                      # an answer that cites nothing: treat with care
+    likely_source: int | None = None           # for an uncited answer: the source whose wording matches (a hint, not a citation)
     notes: list[str] = field(default_factory=list)       # deterministic notes added after the model's text
     warnings: list[str] = field(default_factory=list)    # for the program or the CLI (not part of the answer text)
     query: str = ""                            # what was searched for (the rewritten question)
