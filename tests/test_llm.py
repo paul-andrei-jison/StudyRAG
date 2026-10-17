@@ -126,3 +126,59 @@ def test_context_overflow_has_own_error(settings):
     # still an LLMError for callers that do not care
     with pytest.raises(LLMError):
         c.chat([])
+
+
+# ---- transient vs permanent -----------------------------------------------------------------
+
+def make_client(settings, handler):
+    return LMStudioClient(settings, transport=httpx.MockTransport(handler))
+
+
+def test_connection_failure_and_timeout_are_transient(settings):
+    from studybuddy.errors import TransientLLMError
+
+    def refuse(request):
+        raise httpx.ConnectError("refused")
+
+    def slow(request):
+        raise httpx.ReadTimeout("too slow")
+
+    with pytest.raises(TransientLLMError, match="Is the server running"):
+        make_client(settings, refuse).list_models()
+    with pytest.raises(TransientLLMError, match="timed out"):
+        make_client(settings, slow).chat([])
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504])
+def test_busy_or_broken_server_statuses_are_transient(settings, status):
+    from studybuddy.errors import TransientLLMError
+    with pytest.raises(TransientLLMError):
+        make_client(settings, lambda r: httpx.Response(status, text="busy")).chat([])
+
+
+def test_no_models_loaded_is_transient_because_the_student_can_load_one(settings):
+    from studybuddy.errors import TransientLLMError
+    body = {"error": {"message": "No models loaded. Please load a model in the developer page."}}
+    with pytest.raises(TransientLLMError):
+        make_client(settings, lambda r: httpx.Response(400, json=body)).chat([])
+
+
+@pytest.mark.parametrize("status,text", [(400, "bad request"), (401, "no"), (404, "model not found"), (422, "bad")])
+def test_client_errors_are_permanent(settings, status, text):
+    from studybuddy.errors import TransientLLMError
+    with pytest.raises(LLMError) as info:
+        make_client(settings, lambda r: httpx.Response(status, text=text)).chat([])
+    assert not isinstance(info.value, TransientLLMError)
+
+
+def test_context_overflow_is_not_transient(settings):
+    from studybuddy.errors import ContextOverflowError, TransientLLMError
+    msg = "n_keep: 40009>= n_ctx: 13824). Try to load the model with a larger context length"
+    with pytest.raises(ContextOverflowError) as info:
+        make_client(settings, lambda r: httpx.Response(400, json={"error": msg})).chat([])
+    assert not isinstance(info.value, TransientLLMError)
+
+
+def test_transient_errors_are_still_llm_errors(settings):
+    with pytest.raises(LLMError):
+        make_client(settings, lambda r: httpx.Response(503, text="x")).chat([])

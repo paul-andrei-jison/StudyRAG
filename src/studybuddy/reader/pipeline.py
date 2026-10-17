@@ -8,7 +8,7 @@ from typing import Sequence
 
 from PIL import Image
 
-from ..errors import ReaderError
+from ..errors import ReaderError, TransientLLMError
 from .agreement import agreement
 from .images import clean_image
 from .ocr import OcrEngine
@@ -61,6 +61,7 @@ def read_page(page: PageInput, reader: Reader, ocr: OcrEngine | None, max_edge: 
         record.flags.extend(flags)
     except Exception as exc:  # record the failure; do not drop the page
         record.error = f"{type(exc).__name__}: {exc}"
+        record.error_transient = isinstance(exc, TransientLLMError)
         record.quality = 0.0
         record.flags = ["error"]
     return record

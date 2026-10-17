@@ -12,7 +12,7 @@ def settings(tmp_path):
         base_url="http://lm.test/v1", api_key="k", reader_model="reader-m", chat_model="chat-m",
         embed_model="embed-m", library_dir=tmp_path / "lib", data_dir=tmp_path / "data",
         subjects_file=tmp_path / "subjects.json", tag_timeout_seconds=300,
-        telegram_token=None, telegram_user_id=None,
+        telegram_token=None, telegram_user_id=None, chat_expand_queries=False,  # unit tests opt in explicitly
     )
 
 
@@ -38,3 +38,43 @@ class FakeLM:
 
     def transport(self):
         return httpx.MockTransport(self)
+
+
+class FakeEmbedder:
+    """Deterministic bag-of-words embedder with the same two methods (and prefix behaviour) as the real client.
+
+    Texts that share words get similar vectors, so retrieval tests work without a model. Records every call
+    as (method, effective texts) where the effective text includes the prefix.
+    """
+
+    def __init__(self, dim=64, doc_prefix="", query_prefix="", fail_after_calls=None):
+        self.dim, self.doc_prefix, self.query_prefix = dim, doc_prefix, query_prefix
+        self.calls: list[tuple[str, list[str]]] = []
+        self.fail_after_calls = fail_after_calls
+
+    def _vec(self, text):
+        import hashlib
+        import math
+        import re
+        v = [0.0] * self.dim
+        for word in re.findall(r"\w+", text.lower()):
+            v[int(hashlib.md5(word.encode()).hexdigest(), 16) % self.dim] += 1.0
+        norm = math.sqrt(sum(x * x for x in v)) or 1.0
+        return [x / norm for x in v]
+
+    def _embed(self, method, prefix, texts):
+        if self.fail_after_calls is not None and len(self.calls) >= self.fail_after_calls:
+            from studybuddy.errors import TransientLLMError
+            raise TransientLLMError("embedding server went away")
+        effective = [prefix + t for t in texts]
+        self.calls.append((method, effective))
+        return [self._vec(t) for t in effective]
+
+    def embed_documents(self, texts):
+        return self._embed("documents", self.doc_prefix, texts)
+
+    def embed_queries(self, texts):
+        return self._embed("queries", self.query_prefix, texts)
+
+    def methods(self):
+        return [m for m, _ in self.calls]

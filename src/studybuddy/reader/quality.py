@@ -26,6 +26,7 @@ class PageRecord:
     quality: float = 0.0                  # 0..1
     flags: list[str] = field(default_factory=list)
     error: str | None = None
+    error_transient: bool = False         # the error is expected to go away (LM Studio off or busy)
     illegible_ratio: float = 0.0
     chars_per_megapixel: float | None = None
     ocr_agreement: float | None = None    # None when no OCR engine ran or it failed

@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_TAG_TIMEOUT = 300
 DEFAULT_READER_MAX_EDGE = 2048  # see docs/reader-image-policy.md
+DEFAULT_CHAT_ANSWER_TOKENS = 700
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,9 @@ class Settings:
     embed_query_prefix: str = ""
     reader_max_edge: int = DEFAULT_READER_MAX_EDGE
     samples_dir: Path | None = None  # image + .txt reference pairs for the evaluation script
+    chat_context_tokens: int | None = None   # override when LM Studio cannot report the loaded context size
+    chat_max_answer_tokens: int = DEFAULT_CHAT_ANSWER_TOKENS
+    chat_expand_queries: bool = True   # search with two rephrasings too (measured to help; see docs/chat.md)
 
 
 def _path(value: str) -> Path:
@@ -77,6 +81,24 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
 
     samples = get("SB_SAMPLES_DIR")
 
+    def positive_int(name: str, default: int | None, minimum: int) -> int | None:
+        raw = get(name)
+        if raw is None:
+            return default
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ConfigError(f"{name} must be an integer") from exc
+        if value < minimum:
+            raise ConfigError(f"{name} must be at least {minimum}")
+        return value
+
+    expand_raw = (get("SB_CHAT_EXPAND_QUERIES", "1") or "1").lower()
+    if expand_raw not in ("1", "0", "true", "false", "yes", "no", "on", "off"):
+        raise ConfigError("SB_CHAT_EXPAND_QUERIES must be 1/0, true/false, yes/no or on/off")
+    chat_context = positive_int("SB_CHAT_CONTEXT_TOKENS", None, 1024)
+    chat_answer = positive_int("SB_CHAT_MAX_ANSWER_TOKENS", DEFAULT_CHAT_ANSWER_TOKENS, 64)
+
     user_id = get("TELEGRAM_USER_ID")
     try:
         telegram_user_id = int(user_id) if user_id else None
@@ -103,6 +125,9 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         embed_query_prefix=env.get("EMBED_QUERY_PREFIX", ""),
         reader_max_edge=max_edge,
         samples_dir=_path(samples) if samples else None,
+        chat_context_tokens=chat_context,
+        chat_max_answer_tokens=chat_answer,
+        chat_expand_queries=expand_raw in ("1", "true", "yes", "on"),
     )
 
 
