@@ -140,3 +140,68 @@ def test_script_with_empty_samples_folder_exits_cleanly(tmp_path):
     (tmp_path / "s").mkdir()
     out = run_script(tmp_path, tmp_path / "s")
     assert out.returncode == 0 and "No samples to evaluate" in out.stdout
+
+
+# ---- drafts --------------------------------------------------------------------
+
+from studybuddy.reader.evaluate import DRAFT_MARKER, is_unproofed_draft, write_drafts  # noqa: E402
+
+
+def make_image(path, text=REF):
+    img = Image.new("RGB", (900, 1200), (250, 250, 250))
+    ImageDraw.Draw(img).text((50, 100), text, fill="black", font=ImageFont.load_default(size=40))
+    img.save(path)
+
+
+def test_write_drafts_adds_marker_and_never_overwrites(tmp_path):
+    make_image(tmp_path / "a.png")
+    make_image(tmp_path / "b.png")
+    (tmp_path / "b.txt").write_text("my own proofed text")
+    written, failed = write_drafts([tmp_path / "a.png", tmp_path / "b.png"], FakeReader("model text"))
+    assert written == [tmp_path / "a.txt"]
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == f"{DRAFT_MARKER}\nmodel text\n"
+    assert "not overwritten" in failed[tmp_path / "b.png"]
+    assert (tmp_path / "b.txt").read_text() == "my own proofed text"
+
+
+def test_write_drafts_continues_after_a_failure(tmp_path):
+    make_image(tmp_path / "a.png")
+    (tmp_path / "bad.png").write_bytes(b"junk")
+    written, failed = write_drafts([tmp_path / "bad.png", tmp_path / "a.png"], FakeReader("ok"))
+    assert [p.name for p in written] == ["a.txt"] and tmp_path / "bad.png" in failed
+    assert not (tmp_path / "bad.txt").exists()
+
+
+def test_unproofed_draft_is_not_scored(tmp_path):
+    make_image(tmp_path / "a.png")
+    make_image(tmp_path / "b.png")
+    (tmp_path / "a.txt").write_text(f"{DRAFT_MARKER}\n{REF}\n", encoding="utf-8")
+    (tmp_path / "b.txt").write_text(REF, encoding="utf-8")
+    found = find_pairs(tmp_path)
+    assert [i.name for i, _ in found.pairs] == ["b.png"]
+    assert [p.name for p in found.unproofed_drafts] == ["a.txt"]
+    assert "DRAFT" in format_report(Report([], {}, found))
+
+
+def test_marker_anywhere_in_file_blocks_scoring(tmp_path):
+    ref = tmp_path / "a.txt"
+    ref.write_text(f"{REF}\n  {DRAFT_MARKER}  \nmore", encoding="utf-8")
+    assert is_unproofed_draft(ref)
+    ref.write_text(REF, encoding="utf-8")
+    assert not is_unproofed_draft(ref)
+
+
+def test_evaluate_itself_refuses_a_draft(tmp_path):
+    make_image(tmp_path / "a.png")
+    (tmp_path / "a.txt").write_text(f"{DRAFT_MARKER}\n{REF}", encoding="utf-8")
+    with pytest.raises(ValueError, match="DRAFT"):
+        evaluate([(tmp_path / "a.png", tmp_path / "a.txt")], {"m": FakeReader(REF)}, None)
+
+
+def test_script_refuses_drafts_and_exits_cleanly(tmp_path):
+    s = tmp_path / "s"
+    s.mkdir()
+    make_image(s / "a.png")
+    (s / "a.txt").write_text(f"{DRAFT_MARKER}\n{REF}", encoding="utf-8")
+    out = run_script(tmp_path, s)
+    assert out.returncode == 0 and "Refusing to score 1 unproofed DRAFT" in out.stdout

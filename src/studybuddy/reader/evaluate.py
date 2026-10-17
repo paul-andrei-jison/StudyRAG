@@ -23,6 +23,7 @@ from .images import clean_image
 from .ocr import OcrEngine
 from .quality import score_page
 
+DRAFT_MARKER = "DRAFT - proofread against the page, then delete this line"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 _WS = re.compile(r"\s+")
 
@@ -36,6 +37,7 @@ class SamplePairs:
     pairs: list[tuple[Path, Path]] = field(default_factory=list)
     images_without_reference: list[Path] = field(default_factory=list)
     references_without_image: list[Path] = field(default_factory=list)
+    unproofed_drafts: list[Path] = field(default_factory=list)  # references still carrying the DRAFT line
     note: str = ""
 
 
@@ -77,6 +79,12 @@ def error_rates(reference: str, hypothesis: str) -> tuple[float, float]:
     return jiwer.cer(ref, hyp), jiwer.wer(ref, hyp)
 
 
+def is_unproofed_draft(reference_path: Path) -> bool:
+    """True while the DRAFT line is still anywhere in the file: the text is the model's own output."""
+    text = reference_path.read_text(encoding="utf-8", errors="replace")
+    return any(line.strip() == DRAFT_MARKER for line in text.splitlines())
+
+
 def find_pairs(samples_dir: Path | None) -> SamplePairs:
     out = SamplePairs()
     if samples_dir is None:
@@ -93,8 +101,11 @@ def find_pairs(samples_dir: Path | None) -> SamplePairs:
         if ref is None:
             out.images_without_reference.append(img)
         else:
-            out.pairs.append((img, ref))
             used.add(ref)
+            if is_unproofed_draft(ref):
+                out.unproofed_drafts.append(ref)  # never scored: it would measure the model against itself
+            else:
+                out.pairs.append((img, ref))
     out.references_without_image = [r for r in refs.values() if r not in used]
     if not out.pairs:
         out.note = f"No image + .txt pairs found in {samples_dir}."
@@ -128,6 +139,8 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
     """One Row per (model, page). A failing page is a row with an error, never silently dropped."""
     rows: list[Row] = []
     for image_path, ref_path in pairs:
+        if is_unproofed_draft(ref_path):
+            raise ValueError(f"{ref_path.name} is still an unproofed DRAFT; proofread it and delete the DRAFT line")
         reference = ref_path.read_text(encoding="utf-8")
         shared = Row(image=image_path.name, model="")
         cleaned = None
@@ -170,6 +183,29 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
     return rows
 
 
+def write_drafts(images: list[Path], reader: TranscribesImages, max_edge: int = 2048
+                 ) -> tuple[list[Path], dict[Path, str]]:
+    """Write READER output beside each image as <stem>.txt, headed by the DRAFT line.
+
+    Never overwrites an existing file. Returns (written, {image: error}); a failing image does not stop the rest.
+    """
+    written: list[Path] = []
+    failed: dict[Path, str] = {}
+    for image_path in images:
+        target = image_path.with_suffix(".txt")
+        if target.exists():
+            failed[image_path] = f"{target.name} already exists; not overwritten"
+            continue
+        try:
+            text = reader.transcribe(clean_image(image_path, max_edge=max_edge).image).text
+        except Exception as exc:
+            failed[image_path] = f"{type(exc).__name__}: {exc}"
+            continue
+        target.write_text(f"{DRAFT_MARKER}\n{text}\n", encoding="utf-8")
+        written.append(target)
+    return written, failed
+
+
 def _fmt(value: float | None) -> str:
     return "-" if value is None else f"{value:.3f}"
 
@@ -186,7 +222,9 @@ def format_report(report: Report) -> str:
         lines.append(f"  {model}: pages={s['pages']} errors={s['errors']} READER CER={_fmt(s['reader_cer'])} "
                      f"WER={_fmt(s['reader_wer'])} | OCR CER={_fmt(s['ocr_cer'])} WER={_fmt(s['ocr_wer'])} "
                      f"| agreement={_fmt(s['agreement'])}{raw}")
-    for label, items in (("images without a .txt reference", report.skipped.images_without_reference),
+    for label, items in (("DRAFT references (proofread and delete the DRAFT line to score them)",
+                          report.skipped.unproofed_drafts),
+                         ("images without a .txt reference", report.skipped.images_without_reference),
                          (".txt references without an image", report.skipped.references_without_image)):
         if items:
             lines.append(f"Skipped {len(items)} {label}: " + ", ".join(p.name for p in items))
