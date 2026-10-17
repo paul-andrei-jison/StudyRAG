@@ -1,0 +1,25 @@
+#!/bin/sh
+# Enforce the READER prompt rule (see src/studybuddy/reader/prompt_baseline.py).
+# Install once per clone:  python scripts/install_hooks.py
+
+BASELINE=docs/reader-prompt-baseline.json
+
+# 1. A commit that updates the baseline must say which bake-off justifies it.
+if git diff --cached --name-only | grep -qx "$BASELINE"; then
+  if ! grep -qE '^Bake-off: .+' "$1"; then
+    echo "commit-msg: $BASELINE changed, so the message needs a line like:" >&2
+    echo "  Bake-off: <model>, <N> pages, READER CER <x> (was <y>)" >&2
+    exit 1
+  fi
+fi
+
+# 2. The prompt in the working tree must match the recorded baseline.
+if [ -f scripts/check_prompt_baseline.py ]; then
+  for py in .venv/Scripts/python .venv/bin/python python3 python; do
+    if command -v "$py" >/dev/null 2>&1 || [ -x "$py" ]; then
+      "$py" scripts/check_prompt_baseline.py || exit 1
+      break
+    fi
+  done
+fi
+exit 0

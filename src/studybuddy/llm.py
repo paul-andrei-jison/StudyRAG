@@ -4,18 +4,25 @@ from __future__ import annotations
 import base64
 import mimetypes
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from .config import Settings
-from .errors import LLMError
+from .errors import ContextOverflowError, LLMError
 
 EMBED_BATCH_SIZE = 32
 
 _THINK_BLOCK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.DOTALL | re.IGNORECASE)
 _THINK_UNOPENED = re.compile(r"^.*?</(think|thinking|reasoning)>", re.DOTALL | re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class Completion:
+    text: str
+    finish_reason: str | None  # "stop" normally; "length" means the output was cut off
 
 
 def strip_reasoning(text: str) -> str:
@@ -48,6 +55,8 @@ class LMStudioClient:
             raise LLMError(
                 f"Cannot reach LM Studio at {self.settings.base_url}. Is the server running?"
             ) from exc
+        if resp.status_code == 400 and "context length" in resp.text.lower():
+            raise ContextOverflowError(f"Input does not fit the model context: {resp.text[:300]}")
         if resp.status_code >= 400:
             raise LLMError(f"LM Studio {path} returned {resp.status_code}: {resp.text[:300]}")
         try:
@@ -60,25 +69,32 @@ class LMStudioClient:
         return [m["id"] for m in data.get("data", [])]
 
     def _complete(self, model: str, messages: list[dict], temperature: float,
-                  max_tokens: int | None) -> str:
+                  max_tokens: int | None) -> Completion:
         body: dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature}
         if max_tokens:
             body["max_tokens"] = max_tokens
         data = self._request("POST", "/chat/completions", json=body)
         try:
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMError(f"Unexpected chat response shape: {str(data)[:200]}") from exc
-        return strip_reasoning(content or "")
+        return Completion(strip_reasoning(content or ""), choice.get("finish_reason"))
 
     def chat(self, messages: list[dict], temperature: float = 0.0,
              max_tokens: int | None = None) -> str:
-        return self._complete(self.settings.chat_model, messages, temperature, max_tokens)
+        return self._complete(self.settings.chat_model, messages, temperature, max_tokens).text
 
     def vision(self, prompt: str, image: bytes | Path | str, system: str | None = None,
                temperature: float = 0.0, max_tokens: int | None = None,
                mime: str | None = None) -> str:
-        """Send one image + prompt to the READER model."""
+        """Send one image + prompt to the READER model; returns the text only."""
+        return self.vision_full(prompt, image, system, temperature, max_tokens, mime).text
+
+    def vision_full(self, prompt: str, image: bytes | Path | str, system: str | None = None,
+                    temperature: float = 0.0, max_tokens: int | None = None,
+                    mime: str | None = None) -> Completion:
+        """Like vision(), but also reports finish_reason so callers can detect truncation."""
         if isinstance(image, (str, Path)):
             path = Path(image)
             mime = mime or mimetypes.guess_type(path.name)[0]

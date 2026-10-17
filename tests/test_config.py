@@ -113,3 +113,33 @@ def test_quoted_prefixes_keep_trailing_space_from_dotenv_file(tmp_path, repo, mo
     s = load_settings(repo_root=repo)
     assert s.embed_doc_prefix == "search_document: "
     assert s.embed_query_prefix == "search_query: "
+
+
+def test_reader_settings_defaults(tmp_path, repo):
+    s = load(tmp_path, repo)
+    assert s.reader_max_edge == 2048
+    assert s.samples_dir is None
+
+
+def test_reader_settings_override(tmp_path, repo):
+    s = load(tmp_path, repo, SB_READER_MAX_EDGE="1600", SB_SAMPLES_DIR=str(tmp_path / "samples"))
+    assert s.reader_max_edge == 1600
+    assert s.samples_dir == (tmp_path / "samples").resolve()
+
+
+@pytest.mark.parametrize("value", ["abc", "100"])
+def test_reader_max_edge_invalid(tmp_path, repo, value):
+    with pytest.raises(ConfigError, match="SB_READER_MAX_EDGE"):
+        load(tmp_path, repo, SB_READER_MAX_EDGE=value)
+
+
+def test_samples_dir_inside_repo_rejected(tmp_path, repo):
+    s = load(tmp_path, repo, SB_SAMPLES_DIR=str(repo / "samples"))
+    with pytest.raises(ConfigError, match="SB_SAMPLES_DIR"):
+        validate_dirs(s, repo_root=repo)
+
+
+def test_missing_samples_dir_is_not_created(tmp_path, repo):
+    s = load(tmp_path, repo, SB_SAMPLES_DIR=str(tmp_path / "samples"))
+    validate_dirs(s, repo_root=repo)
+    assert not (tmp_path / "samples").exists()
