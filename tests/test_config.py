@@ -98,3 +98,18 @@ def test_embed_prefixes_from_env(tmp_path, repo):
 def test_embed_prefixes_default_empty(tmp_path, repo):
     s = load(tmp_path, repo)
     assert (s.embed_doc_prefix, s.embed_query_prefix) == ("", "")
+
+
+def test_quoted_prefixes_keep_trailing_space_from_dotenv_file(tmp_path, repo, monkeypatch):
+    for name in ("SB_READER_MODEL", "SB_CHAT_MODEL", "SB_EMBED_MODEL", "SB_LIBRARY_DIR",
+                 "SB_DATA_DIR", "EMBED_DOC_PREFIX", "EMBED_QUERY_PREFIX"):
+        monkeypatch.delenv(name, raising=False)  # restored on teardown; load_dotenv mutates os.environ
+    (repo / ".env").write_text(
+        "SB_READER_MODEL=r\nSB_CHAT_MODEL=c\nSB_EMBED_MODEL=e\n"
+        f"SB_LIBRARY_DIR={(tmp_path / 'lib').as_posix()}\nSB_DATA_DIR={(tmp_path / 'data').as_posix()}\n"
+        'EMBED_DOC_PREFIX="search_document: "\nEMBED_QUERY_PREFIX="search_query: "\n',
+        encoding="utf-8",
+    )
+    s = load_settings(repo_root=repo)
+    assert s.embed_doc_prefix == "search_document: "
+    assert s.embed_query_prefix == "search_query: "
