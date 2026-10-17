@@ -52,13 +52,32 @@ def test_submit_processes_in_the_background_and_resolves_the_ticket(running):
     assert results == [result] and service.jobs.load_all() == []  # the job file is gone after the final outcome
 
 
-def test_typed_subject_is_added_immediately_and_invalid_ones_are_refused_at_once(running):
+def test_typed_subject_is_added_when_filed_and_invalid_ones_are_refused_at_once(running):
     env, service, *_ = running
-    service.submit([photo(env)], subject="Earth Science").result(timeout=20)
-    assert "Earth Science" in env.subjects.names()
+    ticket = service.submit([photo(env)], subject="  earth   science ")
+    result = ticket.result(timeout=20)
+    assert result.status == INDEXED and result.subject == "earth science"
+    assert "earth science" in env.subjects.names()  # added now that a document was really filed under it
     with pytest.raises(SubjectError, match="reserved"):
         service.submit([photo(env, "b.jpg")], subject="CON")
     assert service.jobs.load_all() == []  # nothing was queued
+
+
+def test_a_known_subject_is_canonicalised_at_submit_and_a_new_one_is_not_added_yet(tmp_path, settings):
+    env, service, _ = build(tmp_path, settings)  # the worker is not started: the job just sits in the queue
+    service.submit([photo(env, "a.jpg")], subject="science")
+    service.submit([photo(env, "b.jpg", color=(9, 9, 9))], subject="Brand New")
+    assert [j.subject for j in service.jobs.load_all()] == ["Science", "Brand New"]
+    assert env.subjects.names() == ["Math", "Science", "English"]
+
+
+def test_a_duplicate_does_not_add_its_typed_subject_to_the_list(running):
+    env, service, *_ = running
+    service.submit([photo(env, "a.jpg")], subject="Science").result(timeout=20)
+    result = service.submit([photo(env, "again.jpg")], subject="Brand New Subject").result(timeout=20)
+    assert result.status == DUPLICATE
+    assert "Brand New Subject" not in env.subjects.names()
+    assert not (env.library / "Brand New Subject").exists()
 
 
 def test_submit_validates_input(running):

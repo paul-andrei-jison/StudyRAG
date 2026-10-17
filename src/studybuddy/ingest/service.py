@@ -26,7 +26,7 @@ from .jobs import Job, JobStore
 from .metadata import Chats
 from .processor import Processor
 from .results import DEFERRED, FAILED, IngestResult
-from .subjects import SubjectList
+from .subjects import SubjectList, clean_subject_name
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -98,7 +98,8 @@ class IngestService:
                cleanup_sources: bool = True) -> Ticket:
         """Queue a document (one file, or several photos with `is_album=True`). Thread-safe, returns at once.
 
-        `subject` is the student's choice (typed subjects are added to the list); None means auto-detect. An invalid
+        `subject` is the student's choice (a new typed subject is added to the list when the document is filed);
+        None means auto-detect. An invalid
         subject raises SubjectError here, so the caller can say so immediately instead of failing later."""
         if self._stopping:
             raise StudyBuddyError("The ingest service is stopping and takes no new documents.")
@@ -109,7 +110,9 @@ class IngestService:
             kinds = [source_kind or "document"] * len(paths)
         else:
             kinds = list(source_kind)
-        canonical = self.subjects.resolve(subject, add_if_new=True) if subject else None
+        # Validate now so the caller hears about a bad name at once; a NEW subject is added to the list only when
+        # the document is actually filed (a duplicate or a failed file must not leave a stray subject behind).
+        canonical = (self.subjects.find(subject) or clean_subject_name(subject)) if subject else None
         with self._cond:  # create and register under the worker's lock: it can never claim a job it has no ticket for
             job = self.jobs.create([str(p) for p in paths], kinds, received_at or datetime.now(), origin=origin,
                                    subject=canonical, is_album=is_album, cleanup_sources=cleanup_sources)
