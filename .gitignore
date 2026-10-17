@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+data/
+*.lance/
+*.db
+*.sqlite*
+embed_meta.json

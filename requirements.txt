@@ -1,0 +1,11 @@
+gradio==5.50.0
+httpx==0.28.1
+lancedb==0.40.0
+numpy==2.5.4
+pillow==11.3.0
+pyarrow==26.0.0
+pypdfium2==5.14.0
+pytest==9.1.1
+python-dotenv==1.2.4
+python-telegram-bot==22.8
+watchdog==6.0.0
