@@ -22,6 +22,10 @@ class ReaderError(StudyBuddyError):
     """A page could not be read; never swallowed into an empty transcript."""
 
 
+class PermanentIngestError(StudyBuddyError):
+    """A document can never be ingested as it is (corrupt, unsupported type, ...): retrying will not help."""
+
+
 class IndexStoreError(StudyBuddyError):
     """The search index is unusable or was asked to do something inconsistent."""
 

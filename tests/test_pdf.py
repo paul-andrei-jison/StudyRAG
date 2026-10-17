@@ -82,3 +82,10 @@ def test_corrupt_pdf_raises(tmp_path):
         inspect_pdf(p)
     with pytest.raises(ReaderError):
         list(render_pdf_pages(p))
+
+
+def test_render_only_selected_pages(tmp_path):
+    p = tmp_path / "s.pdf"
+    make_scanned_pdf(p, 4)
+    assert [n for n, _ in render_pdf_pages(p, dpi=72, only={2, 4})] == [2, 4]
+    assert list(render_pdf_pages(p, dpi=72, only=set())) == []

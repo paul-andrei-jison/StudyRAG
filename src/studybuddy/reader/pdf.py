@@ -56,12 +56,15 @@ def inspect_pdf(path: Path | str, min_chars: int = MIN_TEXT_CHARS) -> list[PdfPa
     return infos
 
 
-def render_pdf_pages(path: Path | str, dpi: int = 200) -> Iterator[tuple[int, Image.Image]]:
-    """Yield (page_number, RGB image) for EVERY page; a render failure raises, never skips."""
+def render_pdf_pages(path: Path | str, dpi: int = 200, only: set[int] | None = None
+                     ) -> Iterator[tuple[int, Image.Image]]:
+    """Yield (page_number, RGB image) for EVERY page (or just those in `only`); a render failure raises."""
     pdf = _open(path)
     try:
         total = len(pdf)
         for i in range(total):
+            if only is not None and (i + 1) not in only:
+                continue
             page = pdf[i]
             try:
                 width, height = page.get_size()
