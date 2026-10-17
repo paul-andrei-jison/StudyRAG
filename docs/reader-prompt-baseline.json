@@ -1,0 +1,12 @@
+{
+  "prompt_sha256": "073e643044f64f54a22424134505f394612cb0d08e21745ac016ef95d8cf8457",
+  "recorded": "2026-10-17",
+  "reader_model": "qwen/qwen3-vl-8b",
+  "samples_dir": "samples",
+  "pages": 2,
+  "reader_cer": 0.0334,
+  "reader_wer": 0.0605,
+  "ocr_cer": 0.2104,
+  "agreement": 0.9579,
+  "note": "SYNTHETIC pages only (2 simulated phone photos); redo on real handouts"
+}

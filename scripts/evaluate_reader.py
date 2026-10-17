@@ -19,6 +19,7 @@ from studybuddy.reader.evaluate import (  # noqa: E402
     Report, evaluate, find_pairs, format_report, summarise, write_drafts, write_report,
 )
 from studybuddy.reader.ocr import RapidOcrEngine  # noqa: E402
+from studybuddy.reader.prompt_baseline import record_baseline  # noqa: E402
 from studybuddy.reader.transcribe import Reader  # noqa: E402
 
 
@@ -29,6 +30,9 @@ def main() -> int:
     parser.add_argument("--limit", type=int, help="only evaluate the first N pairs")
     parser.add_argument("--write-drafts", action="store_true",
                         help="write READER output as a DRAFT .txt next to each image that has none")
+    parser.add_argument("--record-prompt-baseline", action="store_true",
+                        help="after scoring, store this run as the baseline for the current READER prompt")
+    parser.add_argument("--baseline-note", default="", help="free text stored with the baseline")
     parser.add_argument("--no-ocr", action="store_true", help="skip the classic OCR engine")
     args = parser.parse_args()
 
@@ -82,6 +86,19 @@ def main() -> int:
     print(format_report(report))
     json_path, csv_path = write_report(report, settings.data_dir / "eval")
     print(f"\nSaved: {json_path}\n       {csv_path}")
+    if args.record_prompt_baseline:
+        if len(models) != 1:
+            print("[FAIL] --record-prompt-baseline needs exactly one READER model")
+            return 1
+        try:
+            record = record_baseline(report.summary[models[0]], models[0], settings.samples_dir.name,
+                                     args.baseline_note)
+        except ValueError as exc:
+            print(f"[FAIL] {exc}")
+            return 1
+        print(f"Recorded prompt baseline {record['prompt_sha256'][:12]} in docs/reader-prompt-baseline.json "
+              f"(CER {record['reader_cer']}, {record['pages']} page(s)).")
+        print("Commit it with the prompt change and add a 'Bake-off: ...' line to the commit message.")
     return 1 if any(r.error for r in rows) else 0
 
 
