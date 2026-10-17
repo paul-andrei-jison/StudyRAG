@@ -66,12 +66,14 @@ def score_page(text: str, image_size: tuple[int, int], ocr_agreement: float | No
     if cpm < MIN_CHARS_PER_MP:
         flags.append("too_short")
         quality *= 0.5
-    if ocr_agreement is not None:
-        if ocr_agreement < LOW_AGREEMENT:
-            flags.append("low_agreement")
-        quality *= ocr_agreement
-    if ocr_coverage is not None and ocr_coverage < LOW_COVERAGE:
-        flags.append("possible_omission")
+    if ocr_agreement is not None and ocr_agreement < LOW_AGREEMENT:
+        flags.append("low_agreement")  # flag only: agreement also drops when the OCR itself is confused
+    if ocr_coverage is not None:
+        # Coverage (share of OCR words found in the transcript) is robust to extra OCR junk such as a
+        # neighbouring page or show-through; the F1 agreement is not (see docs/reader-bakeoff.md).
+        if ocr_coverage < LOW_COVERAGE:
+            flags.append("possible_omission")
+        quality *= ocr_coverage
     if glare_fraction > HIGH_GLARE:
         flags.append("glare")
         quality *= 0.8

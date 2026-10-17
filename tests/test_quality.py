@@ -32,9 +32,23 @@ def test_too_short_for_image_size():
     assert "too_short" in flags and cpm < 20 and q <= 0.5
 
 
-def test_low_agreement_flagged():
+def test_low_agreement_is_flagged_but_does_not_lower_quality():
     q, flags, _, _ = score_page(GOOD, (1000, 1400), 0.3)
-    assert "low_agreement" in flags and q < 0.4
+    assert "low_agreement" in flags and q == 1.0
+    assert PageRecord(1, "a", "image", quality=q, flags=flags).needs_attention
+
+
+def test_quality_follows_ocr_coverage_not_agreement():
+    # a noisy OCR (neighbouring page, show-through) drags agreement down while the READER text is complete
+    noisy = score_page(GOOD, (1000, 1400), 0.72, ocr_coverage=0.94)[0]
+    assert noisy == 0.94
+    assert score_page(GOOD, (1000, 1400), 0.99, ocr_coverage=0.60)[0] == 0.6
+    assert score_page(GOOD, (1000, 1400), 0.99)[0] == 1.0  # no coverage (no OCR): no penalty
+
+
+def test_other_penalties_still_apply_with_coverage():
+    q, flags, _, _ = score_page("Title", (3000, 4000), None, glare_fraction=0.3, ocr_coverage=0.9)
+    assert "too_short" in flags and "glare" in flags and q == pytest.approx(0.5 * 0.9 * 0.8, abs=1e-3)
 
 
 def test_no_ocr_means_no_agreement_penalty():
