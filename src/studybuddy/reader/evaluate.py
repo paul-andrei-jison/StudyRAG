@@ -2,7 +2,7 @@
 
 Samples are image + same-name .txt pairs in a folder OUTSIDE the repo (SB_SAMPLES_DIR). The .txt
 must be the true text of the page in the same conventions the READER uses (Markdown tables, LaTeX,
-[figure: ...], [illegible]); only whitespace is normalised before comparing. Case and punctuation count.
+[figure: ...], [illegible]); only whitespace and quote style (curly vs straight) are normalised before comparing. Case and other punctuation count.
 """
 from __future__ import annotations
 
@@ -66,13 +66,21 @@ class Report:
     skipped: SamplePairs
 
 
-def normalise_ws(text: str) -> str:
-    return _WS.sub(" ", text).strip()
+# Typographic quotes the READER sometimes emits where the page (and so the reference) uses plain ones.
+_QUOTES = str.maketrans({
+    "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'",
+    "“": '"', "”": '"', "„": '"', "‟": '"', "″": '"',
+})
+
+
+def normalise_text(text: str) -> str:
+    """Unify curly/straight quotes and collapse whitespace. Case, punctuation and the rest still count."""
+    return _WS.sub(" ", text.translate(_QUOTES)).strip()
 
 
 def error_rates(reference: str, hypothesis: str) -> tuple[float, float]:
     """(CER, WER). An empty hypothesis scores 1.0 (everything missing); the reference must be non-empty."""
-    ref, hyp = normalise_ws(reference), normalise_ws(hypothesis)
+    ref, hyp = normalise_text(reference), normalise_text(hypothesis)
     if not ref:
         raise ValueError("reference text is empty")
     if not hyp:

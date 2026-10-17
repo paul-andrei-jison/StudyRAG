@@ -205,3 +205,17 @@ def test_script_refuses_drafts_and_exits_cleanly(tmp_path):
     (s / "a.txt").write_text(f"{DRAFT_MARKER}\n{REF}", encoding="utf-8")
     out = run_script(tmp_path, s)
     assert out.returncode == 0 and "Refusing to score 1 unproofed DRAFT" in out.stdout
+
+
+# ---- typographic quotes ---------------------------------------------------------
+
+def test_curly_and_straight_quotes_score_the_same():
+    assert error_rates("Earth's \"Goldilocks zone\"", "Earth\u2019s \u201cGoldilocks zone\u201d") == (0.0, 0.0)
+    assert error_rates("Earth\u2019s crust", "Earth's crust") == (0.0, 0.0)
+    assert error_rates("it's", "it\u2018s") == (0.0, 0.0)
+
+
+def test_quote_normalisation_does_not_hide_real_errors():
+    cer, wer = error_rates("Earth's crust", "Earths crust")  # apostrophe genuinely missing
+    assert cer > 0 and wer > 0
+    assert error_rates("say \"hi\"", "say 'hi'")[0] > 0  # single vs double quotes still differ
