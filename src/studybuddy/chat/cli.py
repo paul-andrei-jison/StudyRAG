@@ -39,6 +39,8 @@ def default_factory(settings: Settings, args: argparse.Namespace) -> tuple[ChatS
     config = ChatConfig.from_settings(settings)
     if args.k:
         config.source_count = args.k
+    if args.no_expand:
+        config.expand_queries = False
     session = ChatSession(index, client, settings, subjects, config)
 
     def cleanup() -> None:
@@ -144,6 +146,7 @@ def chat_main(argv: list[str], settings: Settings | None = None, factory: Sessio
     parser.add_argument("--k", type=int, help="number of sources per answer (default 5)")
     parser.add_argument("--ask", help="ask one question and exit")
     parser.add_argument("--no-stream", action="store_true", help="print the answer when it is complete")
+    parser.add_argument("--no-expand", action="store_true", help="do not search with rephrasings of the question")
     parser.add_argument("--show-scores", action="store_true", help="show cosine and bm25 scores in the sources")
     args = parser.parse_args(argv)
 

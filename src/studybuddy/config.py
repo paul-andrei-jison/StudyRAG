@@ -38,6 +38,7 @@ class Settings:
     samples_dir: Path | None = None  # image + .txt reference pairs for the evaluation script
     chat_context_tokens: int | None = None   # override when LM Studio cannot report the loaded context size
     chat_max_answer_tokens: int = DEFAULT_CHAT_ANSWER_TOKENS
+    chat_expand_queries: bool = True   # search with two rephrasings too (measured to help; see docs/chat.md)
 
 
 def _path(value: str) -> Path:
@@ -92,6 +93,9 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
             raise ConfigError(f"{name} must be at least {minimum}")
         return value
 
+    expand_raw = (get("SB_CHAT_EXPAND_QUERIES", "1") or "1").lower()
+    if expand_raw not in ("1", "0", "true", "false", "yes", "no", "on", "off"):
+        raise ConfigError("SB_CHAT_EXPAND_QUERIES must be 1/0, true/false, yes/no or on/off")
     chat_context = positive_int("SB_CHAT_CONTEXT_TOKENS", None, 1024)
     chat_answer = positive_int("SB_CHAT_MAX_ANSWER_TOKENS", DEFAULT_CHAT_ANSWER_TOKENS, 64)
 
@@ -123,6 +127,7 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         samples_dir=_path(samples) if samples else None,
         chat_context_tokens=chat_context,
         chat_max_answer_tokens=chat_answer,
+        chat_expand_queries=expand_raw in ("1", "true", "yes", "on"),
     )
 
 

@@ -20,6 +20,7 @@ from ..llm import StreamEnd
 from .answers import ANSWERED, ERROR, NOT_IN_PAPERS_STATUS, ChatAnswer, Source
 from .budget import TokenEstimator, minimum_context, plan_budget, resolve_context_tokens, too_small
 from .citations import CitationFilter
+from .expand import expand_query, fuse_searches
 from .gate import Assessment, GateConfig, assess
 from .prompt import NOT_IN_PAPERS, SYSTEM_PROMPT, build_messages, format_source
 from .rewrite import Turn, rewrite_query
@@ -52,7 +53,9 @@ class ChatConfig:
 
     @classmethod
     def from_settings(cls, settings: Settings, **overrides) -> "ChatConfig":
-        return cls(max_answer_tokens=settings.chat_max_answer_tokens, context_tokens=settings.chat_context_tokens, **overrides)
+        options = dict(max_answer_tokens=settings.chat_max_answer_tokens, context_tokens=settings.chat_context_tokens,
+                       expand_queries=settings.chat_expand_queries)
+        return cls(**{**options, **overrides})
 
 
 class _RefusalWatch:
@@ -167,6 +170,10 @@ class ChatSession:
     # ---- steps -----------------------------------------------------------------------------
 
     def _retrieve(self, query: str) -> list[Hit]:
+        if self.config.expand_queries:
+            phrasings = expand_query(self.client, query)
+            if phrasings:
+                return fuse_searches(self.index, [query, *phrasings], self.config.pool, self._subject)
         return self.index.search(query, k=self.config.pool, subject=self._subject, mode="hybrid")
 
     def _fit(self, chosen: Sequence[Hit], question: str, system_tokens: int, question_tokens: int, context: int,

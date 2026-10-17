@@ -168,3 +168,13 @@ def test_bad_chat_settings_are_rejected(tmp_path, name, value):
            "SB_LIBRARY_DIR": str(tmp_path / "l"), "SB_DATA_DIR": str(tmp_path / "d"), name: value}
     with pytest.raises(ConfigError, match=name):
         load_settings(env, repo_root=tmp_path / "repo")
+
+
+def test_query_expansion_setting(tmp_path):
+    env = {"SB_READER_MODEL": "r", "SB_CHAT_MODEL": "c", "SB_EMBED_MODEL": "e",
+           "SB_LIBRARY_DIR": str(tmp_path / "l"), "SB_DATA_DIR": str(tmp_path / "d")}
+    assert load_settings(env, repo_root=tmp_path / "repo").chat_expand_queries is True
+    for value, expected in (("1", True), ("true", True), ("ON", True), ("0", False), ("false", False), ("No", False), ("off", False)):
+        assert load_settings({**env, "SB_CHAT_EXPAND_QUERIES": value}, repo_root=tmp_path / "repo").chat_expand_queries is expected
+    with pytest.raises(ConfigError, match="SB_CHAT_EXPAND_QUERIES"):
+        load_settings({**env, "SB_CHAT_EXPAND_QUERIES": "maybe"}, repo_root=tmp_path / "repo")

@@ -154,3 +154,18 @@ def test_format_sources_without_sources():
 def test_script_help_runs():
     out = subprocess.run([sys.executable, str(ROOT / "scripts" / "chat.py"), "--help"], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0 and "--subject" in out.stdout and "--ask" in out.stdout
+
+
+def test_no_expand_flag_turns_expansion_off(setup):
+    from studybuddy.chat.session import ChatConfig
+    seen = {}
+
+    def factory(settings, args):
+        config = ChatConfig(expand_queries=True)
+        if args.no_expand:
+            config.expand_queries = False
+        seen["expand"] = config.expand_queries
+        return ChatSession(setup.index, ScriptedClient([GOOD]), settings, None, config, gate=LAX_GATE), lambda: None
+
+    chat_main(["--ask", Q, "--no-expand"], setup.settings, factory, input, io.StringIO())
+    assert seen["expand"] is False

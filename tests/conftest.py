@@ -12,7 +12,7 @@ def settings(tmp_path):
         base_url="http://lm.test/v1", api_key="k", reader_model="reader-m", chat_model="chat-m",
         embed_model="embed-m", library_dir=tmp_path / "lib", data_dir=tmp_path / "data",
         subjects_file=tmp_path / "subjects.json", tag_timeout_seconds=300,
-        telegram_token=None, telegram_user_id=None,
+        telegram_token=None, telegram_user_id=None, chat_expand_queries=False,  # unit tests opt in explicitly
     )
 
 
