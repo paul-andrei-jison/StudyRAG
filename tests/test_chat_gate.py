@@ -206,3 +206,29 @@ def test_calibration_script_without_samples_exits_cleanly(tmp_path):
     out = subprocess.run([sys.executable, str(ROOT / "scripts" / "calibrate_gate.py")], capture_output=True, text=True,
                          env=env, cwd=tmp_path, timeout=60)
     assert out.returncode == 0 and "questions.json" in out.stdout
+
+
+# ---- the calibrated defaults, on the score ranges observed on real pages (numbers only) ------------
+
+OBSERVED = [  # (kind, top cosine, coverage) from the 2026-10-17 calibration run: 13 answerable, 6 far-off, 6 near-miss
+    *[(ANSWERABLE, c, v) for c, v in [(0.818, 1.0), (0.807, 0.8), (0.803, 0.5), (0.796, 1.0), (0.788, 0.8), (0.783, 0.75), (0.759, 0.5),
+                                      (0.751, 0.86), (0.739, 0.6), (0.702, 0.8), (0.701, 0.33), (0.681, 0.75), (0.665, 1.0)]],
+    *[(FAR, c, v) for c, v in [(0.622, 0.0), (0.593, 0.0), (0.535, 0.14), (0.534, 0.0), (0.498, 0.0), (0.488, 0.0)]],
+    *[(NEAR, c, v) for c, v in [(0.725, 0.75), (0.715, 0.5), (0.695, 0.33), (0.668, 0.25), (0.626, 0.0), (0.598, 0.5)]],
+]
+
+
+def test_calibrated_defaults_on_the_observed_scores():
+    table = [scored(kind, cosine, cover) for kind, cosine, cover in OBSERVED]
+    r = evaluate(table, GateConfig())
+    assert r.false_refusals == 0 and r.far_false_answers == 0   # nothing answerable refused, nothing far-off let through
+    assert r.near_false_answers == 3                            # near-misses reach the model, which refuses them itself
+    assert (r.n_answerable, r.n_unanswerable) == (13, 12)
+
+
+def test_calibrated_defaults_keep_a_margin_to_the_observed_scores():
+    d = GateConfig()
+    far_max = max(c for k, c, _ in OBSERVED if k == FAR)
+    answerable_by_high = [c for k, c, _ in OBSERVED if k == ANSWERABLE and c >= d.high_cosine]
+    assert d.low_cosine - far_max >= 0.015            # the far-off questions stay clear of LOW
+    assert min(answerable_by_high) - d.high_cosine >= 0.0 and 0.60 < d.low_cosine < d.high_cosine < 0.75

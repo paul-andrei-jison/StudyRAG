@@ -23,8 +23,11 @@ _SUFFIXES = ("ing", "ed", "es", "ly", "s")
 
 @dataclass(frozen=True)
 class GateConfig:
-    high_cosine: float = 0.70      # at or above: answerable on the vector score alone
-    low_cosine: float = 0.60       # at or above (and below high): needs the keywords to agree
+    """Calibrated 2026-10-17 on 3 real worksheet photos: 13 answerable questions (cosine 0.665-0.818) and 12 unanswerable
+    ones (far-off 0.488-0.622, near-misses 0.598-0.725). The gate is deliberately LENIENT: it refuses what is clearly
+    unrelated and leaves near-misses to the model's own NOT_IN_PAPERS, which refused 12 of 12 (see docs/chat.md)."""
+    high_cosine: float = 0.68      # at or above: answerable on the vector score alone
+    low_cosine: float = 0.64       # at or above (and below high): needs the keywords to agree
     min_coverage: float = 0.50     # share of the question's content words found in the best source
 
 
