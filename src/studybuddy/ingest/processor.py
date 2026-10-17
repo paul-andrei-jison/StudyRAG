@@ -183,15 +183,18 @@ class Processor:
         return kinds.pop() if len(kinds) == 1 else "mixed"
 
     def _remove_empty_inbox_folders(self, sources: Sequence[Path]) -> None:
+        """Remove album folders the job emptied. The inbox itself and the subject folders directly under it stay."""
         if self.inbox_dir is None:
             return
         inbox = self.inbox_dir.resolve()
         for parent in {s.resolve().parent for s in sources}:
-            if parent != inbox and inbox in parent.parents:
+            current = parent
+            while current != inbox and current.parent != inbox and inbox in current.parents:
                 try:
-                    parent.rmdir()  # only succeeds when the folder is empty
+                    current.rmdir()  # only succeeds when the folder is empty
                 except OSError:
-                    pass
+                    break
+                current = current.parent
 
     def _persist(self, job: Job) -> None:
         if self.persist:

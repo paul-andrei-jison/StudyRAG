@@ -354,3 +354,21 @@ def test_the_result_for_a_failed_job_still_lists_the_submitted_files(env):
     job = env.job(src, kinds=["photo"])
     result = env.processor.process(job)
     assert result.files == [str(src.resolve())] and result.source_kinds == ["photo"] and result.attempts == 1
+
+
+def test_subject_folders_in_the_inbox_are_kept_but_emptied_album_folders_are_removed(env):
+    loose = make_photo(env.inbox / "Science" / "a.jpg", color=(1, 1, 1))
+    album = [make_photo(env.inbox / "Math" / "set" / "part1" / "1.jpg", color=(2, 2, 2)),
+             make_photo(env.inbox / "Math" / "set" / "part2" / "2.jpg", color=(3, 3, 3))]
+    env.processor.process(env.job(loose, subject="Science"))
+    env.processor.process(env.job(*album, subject="Math", album=True))
+    assert (env.inbox / "Science").is_dir() and (env.inbox / "Math").is_dir()  # the student's subject folders stay
+    assert not (env.inbox / "Math" / "set").exists()  # the emptied album folder and its sub-folders are gone
+
+
+def test_an_album_folder_that_still_holds_other_files_is_kept(env):
+    pages = [make_photo(env.inbox / "Math" / "set" / f"{i}.jpg", color=(i * 40, 3, 3)) for i in (1, 2)]
+    note = env.inbox / "Math" / "set" / "readme-for-me.txt"
+    note.write_text("do not lose me")
+    env.processor.process(env.job(*pages, subject="Math", album=True))
+    assert note.read_text() == "do not lose me"
