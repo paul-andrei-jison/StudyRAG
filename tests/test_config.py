@@ -88,3 +88,13 @@ def test_uncreatable_dir(tmp_path, repo):
     s = load(tmp_path, repo, SB_LIBRARY_DIR=str(blocker / "lib"))
     with pytest.raises(ConfigError, match="SB_LIBRARY_DIR"):
         validate_dirs(s, repo_root=repo)
+
+
+def test_embed_prefixes_from_env(tmp_path, repo):
+    s = load(tmp_path, repo, EMBED_DOC_PREFIX="search_document: ", EMBED_QUERY_PREFIX="search_query: ")
+    assert (s.embed_doc_prefix, s.embed_query_prefix) == ("search_document: ", "search_query: ")
+
+
+def test_embed_prefixes_default_empty(tmp_path, repo):
+    s = load(tmp_path, repo)
+    assert (s.embed_doc_prefix, s.embed_query_prefix) == ("", "")

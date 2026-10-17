@@ -29,6 +29,9 @@ class Settings:
     tag_timeout_seconds: int
     telegram_token: str | None
     telegram_user_id: int | None
+    # Task prefixes some embedding models need (e.g. nomic: "search_document: "/"search_query: ").
+    embed_doc_prefix: str = ""
+    embed_query_prefix: str = ""
 
 
 def _path(value: str) -> Path:
@@ -84,6 +87,8 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         tag_timeout_seconds=timeout,
         telegram_token=get("TELEGRAM_BOT_TOKEN"),
         telegram_user_id=telegram_user_id,
+        embed_doc_prefix=env.get("EMBED_DOC_PREFIX", ""),
+        embed_query_prefix=env.get("EMBED_QUERY_PREFIX", ""),
     )
 
 

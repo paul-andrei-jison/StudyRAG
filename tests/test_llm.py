@@ -84,3 +84,24 @@ def test_bad_shape(settings):
 ])
 def test_strip_reasoning(raw, expected):
     assert strip_reasoning(raw) == expected
+
+
+def test_embed_prefixes(settings):
+    import dataclasses
+    s = dataclasses.replace(settings, embed_doc_prefix="search_document: ",
+                            embed_query_prefix="search_query: ")
+    fake = FakeLM()
+    c = LMStudioClient(s, transport=fake.transport())
+    c.embed_documents(["a", "b"])
+    c.embed_queries(["q"])
+    c.embed(["raw"])
+    inputs = [json.loads(r.content)["input"] for r in fake.requests]
+    assert inputs == [["search_document: a", "search_document: b"], ["search_query: q"], ["raw"]]
+
+
+def test_embed_prefixes_default_empty(settings):
+    fake = FakeLM()
+    c = client(settings, fake)
+    c.embed_documents(["a"])
+    c.embed_queries(["q"])
+    assert [json.loads(r.content)["input"] for r in fake.requests] == [["a"], ["q"]]

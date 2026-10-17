@@ -94,7 +94,18 @@ class LMStudioClient:
         ]})
         return self._complete(self.settings.reader_model, messages, temperature, max_tokens)
 
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed chunks for storage, adding EMBED_DOC_PREFIX."""
+        prefix = self.settings.embed_doc_prefix
+        return self.embed([prefix + t for t in texts])
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        """Embed questions for search, adding EMBED_QUERY_PREFIX."""
+        prefix = self.settings.embed_query_prefix
+        return self.embed([prefix + t for t in texts])
+
     def embed(self, texts: list[str]) -> list[list[float]]:
+        """Raw embedding with no prefix; prefer embed_documents / embed_queries."""
         out: list[list[float]] = []
         for i in range(0, len(texts), EMBED_BATCH_SIZE):
             batch = texts[i:i + EMBED_BATCH_SIZE]
