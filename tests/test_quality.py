@@ -175,3 +175,15 @@ def test_possible_omission_flagged_when_ocr_sees_more_words():
 def test_pipeline_records_coverage_and_flags_omission():
     (rec,) = read_pages([img_page(1)], FakeReader([GOOD]), FakeOcr(text=GOOD + " plus a whole extra paragraph " * 30))
     assert rec.ocr_coverage < 0.9 and "possible_omission" in rec.flags and rec.needs_attention
+
+
+def test_low_agreement_threshold_is_half():
+    assert "low_agreement" not in score_page(GOOD, (1000, 1400), 0.55)[1]
+    assert "low_agreement" not in score_page(GOOD, (1000, 1400), 0.50)[1]
+    assert "low_agreement" in score_page(GOOD, (1000, 1400), 0.45)[1]
+    assert score_page(GOOD, (1000, 1400), 0.72, ocr_coverage=0.94)[1] == []  # the real ...333 page
+
+
+def test_other_thresholds_unchanged():
+    from studybuddy.reader import quality
+    assert quality.LOW_COVERAGE == 0.85 and quality.ATTENTION_QUALITY == 0.60

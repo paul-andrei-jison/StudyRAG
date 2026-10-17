@@ -9,7 +9,7 @@ WORD_RE = re.compile(r"\S+")
 
 MANY_ILLEGIBLE = 0.10      # share of words that are [illegible]
 MIN_CHARS_PER_MP = 20.0    # fewer transcribed characters per megapixel than this: suspiciously short
-LOW_AGREEMENT = 0.60       # READER vs classic OCR
+LOW_AGREEMENT = 0.50       # READER vs classic OCR; the most accurate real page scored 0.72, so 0.60 was too close
 LOW_COVERAGE = 0.85        # the OCR sees words the READER left out: likely a dropped paragraph (a complete page scored 0.91 because OCR merges words)
 HIGH_GLARE = 0.15          # share of near-white pixels in the source photo
 ATTENTION_QUALITY = 0.60
