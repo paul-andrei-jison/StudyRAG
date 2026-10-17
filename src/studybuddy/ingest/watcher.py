@@ -202,6 +202,7 @@ class InboxWatcher:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._observer = None
+        self.scans = 0  # completed scans (lets a caller tell "looked and found nothing" from "has not looked yet")
 
     def scan_once(self) -> list[Ticket]:
         """Queue every ready group. A group whose subject folder name is unusable is moved to failed/ with the reason."""
@@ -219,6 +220,7 @@ class InboxWatcher:
             tickets.append(ticket)
             if self.on_ticket:
                 self.on_ticket(ticket, group)
+        self.scans += 1
         return tickets
 
     def _quarantine(self, group: Group, error: str) -> None:

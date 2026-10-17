@@ -92,7 +92,7 @@ class Env:
 
 def make_env(tmp_path, settings, reader=None, chat=None, embedder=None, subjects=("Math", "Science", "English")) -> Env:
     s = dataclasses.replace(settings, library_dir=tmp_path / "library", data_dir=tmp_path / "data",
-                            subjects_file=tmp_path / "subjects-template.json")
+                            subjects_file=tmp_path / "data" / "subjects.json")
     s.library_dir.mkdir(parents=True, exist_ok=True)
     s.data_dir.mkdir(parents=True, exist_ok=True)
     reader = reader or FakeReader()
