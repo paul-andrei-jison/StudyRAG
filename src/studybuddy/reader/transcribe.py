@@ -20,10 +20,10 @@ USER_PROMPT = """Transcribe this page image verbatim.
 
 Rules:
 - Copy every word exactly as printed, including spelling mistakes, odd capitalisation and punctuation. Never correct or reword anything.
-- Keep the page's reading order. For multi-column pages read the whole first column top to bottom, then the next column. Keep headings, numbering and bullet markers.
+- Keep the page's reading order. Pages may have two text columns side by side: read the entire left column from top to bottom first, then the entire right column, and only then continue with full-width content (formulas, tables, figures) that sits below the columns. Keep headings, numbering and bullet markers.
 - Tables: output a Markdown table (header row, | --- | separator row, one row per line). Keep empty cells empty.
 - Mathematics: write formulas as LaTeX, inline as $...$ and display equations as $$...$$.
-- Diagrams, pictures, charts and graphs: write one line [figure: what the drawing itself shows, including shapes, arrows and their directions]. Then copy every label or text written inside the figure, one per line. The caption (for example "Figure 1: ...") is separate text: copy it exactly where it appears and do not use it as the figure description.
+- Diagrams, pictures, charts and graphs: write one line [figure: short plain description]. Copy any labels, captions or axis text that appear in the figure on their own lines after it.
 - Text you cannot read: write [illegible] in its place. Never guess.
 - Page headers, footers and page numbers are part of the page: include them where they appear.
 - If the page has no text at all, output nothing.
