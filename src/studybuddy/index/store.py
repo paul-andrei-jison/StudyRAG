@@ -267,6 +267,9 @@ class Store:
         return [DocumentRow(r["id"], r["content_hash"], r["file_path"], r["source_kind"], r["subject"], r["title"],
                             r["summary"], r["page_count"], r["chunk_count"], r["created_at"]) for r in rows]
 
+    def get_document(self, doc_id: int) -> DocumentRow | None:
+        return next((d for d in self.documents() if d.id == doc_id), None)
+
     def pages(self, doc_id: int) -> list[sqlite3.Row]:
         with self._lock:
             return self._db.execute("SELECT * FROM pages WHERE doc_id = ? ORDER BY page_number", (doc_id,)).fetchall()

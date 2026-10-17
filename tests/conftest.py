@@ -64,8 +64,8 @@ class FakeEmbedder:
 
     def _embed(self, method, prefix, texts):
         if self.fail_after_calls is not None and len(self.calls) >= self.fail_after_calls:
-            from studybuddy.errors import LLMError
-            raise LLMError("embedding server went away")
+            from studybuddy.errors import TransientLLMError
+            raise TransientLLMError("embedding server went away")
         effective = [prefix + t for t in texts]
         self.calls.append((method, effective))
         return [self._vec(t) for t in effective]

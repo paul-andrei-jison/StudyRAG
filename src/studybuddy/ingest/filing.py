@@ -48,6 +48,14 @@ def _copy_bytes(src: Path, dst: Path) -> None:
         os.fsync(fout.fileno())
 
 
+def _rmdir_if_empty(folder: Path) -> None:
+    """Remove a subject folder this job created and left empty (never one that holds other documents)."""
+    try:
+        folder.rmdir()
+    except OSError:
+        pass
+
+
 def _temp_name(final: Path) -> Path:
     return final.with_name(f".{final.name}.partial")
 
@@ -93,6 +101,7 @@ class Filer:
             self._copy_verified(src, final, digest)
         except BaseException:
             final.unlink(missing_ok=True)
+            _rmdir_if_empty(final.parent)
             raise
         return FiledDocument(final, [final], None, [final])
 
@@ -109,6 +118,7 @@ class Filer:
             self._build_pdf(pages, pdf)
         except BaseException:
             shutil.rmtree(folder, ignore_errors=True)  # we just created this folder: it holds only our files
+            _rmdir_if_empty(folder.parent)
             raise
         return FiledDocument(folder, pages, pdf, [folder])
 
@@ -141,6 +151,7 @@ class Filer:
                 shutil.rmtree(path, ignore_errors=True)
             else:
                 path.unlink(missing_ok=True)
+            _rmdir_if_empty(path.parent)
 
     @staticmethod
     def remove_sources(sources: Sequence[Path], filed: Sequence[Path], hashes: Sequence[str]) -> list[str]:
