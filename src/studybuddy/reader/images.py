@@ -31,8 +31,10 @@ class CleanResult:
     steps: list[str] = field(default_factory=list)
 
 
-def load_image(source: bytes | Path | str) -> tuple[Image.Image, bool]:
+def load_image(source: bytes | Path | str | Image.Image) -> tuple[Image.Image, bool]:
     """Open an image, apply EXIF rotation, return RGB and whether it was rotated."""
+    if isinstance(source, Image.Image):  # e.g. a rendered PDF page: nothing to rotate
+        return source.convert("RGB"), False
     img = Image.open(io.BytesIO(source) if isinstance(source, bytes) else Path(source))
     img.load()
     orientation = img.getexif().get(0x0112, 1)
@@ -127,7 +129,7 @@ def boost_contrast(gray: np.ndarray) -> np.ndarray:
     return cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
 
 
-def clean_image(source: bytes | Path | str, max_edge: int = 2048) -> CleanResult:
+def clean_image(source: bytes | Path | str | Image.Image, max_edge: int = 2048) -> CleanResult:
     pil, rotated = load_image(source)
     result = CleanResult(image=pil, original_size=pil.size, exif_rotated=rotated)
     if rotated:
