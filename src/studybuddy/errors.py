@@ -10,6 +10,10 @@ class LLMError(StudyBuddyError):
     """LM Studio request failed or returned something unusable."""
 
 
+class TransientLLMError(LLMError):
+    """LM Studio is off, busy or has no model loaded: the same request is expected to work later."""
+
+
 class ContextOverflowError(LLMError):
     """The prompt (including any image) does not fit the model's loaded context."""
 

@@ -11,9 +11,10 @@ from typing import Any
 import httpx
 
 from .config import Settings
-from .errors import ContextOverflowError, LLMError
+from .errors import ContextOverflowError, LLMError, TransientLLMError
 
 EMBED_BATCH_SIZE = 32
+TRANSIENT_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 _THINK_BLOCK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.DOTALL | re.IGNORECASE)
 _THINK_UNOPENED = re.compile(r"^.*?</(think|thinking|reasoning)>", re.DOTALL | re.IGNORECASE)
@@ -50,15 +51,18 @@ class LMStudioClient:
         try:
             resp = self._http.request(method, path.lstrip("/"), **kwargs)
         except httpx.TimeoutException as exc:
-            raise LLMError(f"LM Studio timed out on {path}") from exc
+            raise TransientLLMError(f"LM Studio timed out on {path}") from exc
         except httpx.HTTPError as exc:
-            raise LLMError(
+            raise TransientLLMError(
                 f"Cannot reach LM Studio at {self.settings.base_url}. Is the server running?"
             ) from exc
         if resp.status_code == 400 and "context length" in resp.text.lower():
             raise ContextOverflowError(f"Input does not fit the model context: {resp.text[:300]}")
         if resp.status_code >= 400:
-            raise LLMError(f"LM Studio {path} returned {resp.status_code}: {resp.text[:300]}")
+            message = f"LM Studio {path} returned {resp.status_code}: {resp.text[:300]}"
+            if resp.status_code in TRANSIENT_STATUS or (resp.status_code == 400 and "no models loaded" in resp.text.lower()):
+                raise TransientLLMError(message)  # busy, restarting, or waiting for the student to load a model
+            raise LLMError(message)
         try:
             return resp.json()
         except ValueError as exc:

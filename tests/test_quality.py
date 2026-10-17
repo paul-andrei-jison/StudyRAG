@@ -187,3 +187,12 @@ def test_low_agreement_threshold_is_half():
 def test_other_thresholds_unchanged():
     from studybuddy.reader import quality
     assert quality.LOW_COVERAGE == 0.85 and quality.ATTENTION_QUALITY == 0.60
+
+
+def test_transient_reader_failure_is_marked_transient_and_others_are_not():
+    from studybuddy.errors import TransientLLMError
+    records = read_pages([img_page(1), img_page(2), img_page(3)],
+                         FakeReader([TransientLLMError("LM Studio is off"), ReaderError("cut off"), GOOD]), FakeOcr())
+    assert records[0].error_transient is True and "LM Studio is off" in records[0].error
+    assert records[1].error_transient is False and records[1].error
+    assert records[2].error_transient is False and records[2].error is None
