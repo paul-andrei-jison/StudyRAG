@@ -10,10 +10,11 @@ WORD_RE = re.compile(r"\S+")
 MANY_ILLEGIBLE = 0.10      # share of words that are [illegible]
 MIN_CHARS_PER_MP = 20.0    # fewer transcribed characters per megapixel than this: suspiciously short
 LOW_AGREEMENT = 0.60       # READER vs classic OCR
+LOW_COVERAGE = 0.85        # the OCR sees words the READER left out: likely a dropped paragraph (a complete page scored 0.91 because OCR merges words)
 HIGH_GLARE = 0.15          # share of near-white pixels in the source photo
 ATTENTION_QUALITY = 0.60
 
-ATTENTION_FLAGS = {"empty", "error", "many_illegible", "low_agreement"}
+ATTENTION_FLAGS = {"empty", "error", "many_illegible", "low_agreement", "possible_omission"}
 
 
 @dataclass
@@ -28,6 +29,7 @@ class PageRecord:
     illegible_ratio: float = 0.0
     chars_per_megapixel: float | None = None
     ocr_agreement: float | None = None    # None when no OCR engine ran or it failed
+    ocr_coverage: float | None = None     # share of OCR words present in the transcript
     image_size: tuple[int, int] | None = None   # original size after EXIF rotation
     sent_size: tuple[int, int] | None = None    # size actually sent to the READER
     steps: list[str] = field(default_factory=list)
@@ -45,7 +47,7 @@ def illegible_ratio(text: str) -> float:
 
 
 def score_page(text: str, image_size: tuple[int, int], ocr_agreement: float | None,
-               glare_fraction: float = 0.0) -> tuple[float, list[str], float, float]:
+               glare_fraction: float = 0.0, ocr_coverage: float | None = None) -> tuple[float, list[str], float, float]:
     """Return (quality, flags, illegible_ratio, chars_per_megapixel)."""
     flags: list[str] = []
     stripped = text.strip()
@@ -67,6 +69,8 @@ def score_page(text: str, image_size: tuple[int, int], ocr_agreement: float | No
         if ocr_agreement < LOW_AGREEMENT:
             flags.append("low_agreement")
         quality *= ocr_agreement
+    if ocr_coverage is not None and ocr_coverage < LOW_COVERAGE:
+        flags.append("possible_omission")
     if glare_fraction > HIGH_GLARE:
         flags.append("glare")
         quality *= 0.8

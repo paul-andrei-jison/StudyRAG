@@ -48,6 +48,7 @@ class Row:
     ocr_cer: float | None = None
     ocr_wer: float | None = None
     agreement: float | None = None
+    coverage: float | None = None         # share of OCR words present in the READER text
     quality: float | None = None
     flags: str = ""
     reader_seconds: float | None = None
@@ -150,9 +151,10 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
                 row.reader_seconds = round(time.monotonic() - start, 1)
                 row.reader_cer, row.reader_wer = error_rates(reference, text)
                 if ocr is not None:
-                    row.agreement = agreement(text, ocr_text).score
+                    found = agreement(text, ocr_text)
+                    row.agreement, row.coverage = found.score, found.ocr_coverage
                 quality, flags, _, _ = score_page(text, cleaned.original_size, row.agreement,
-                                                  cleaned.glare_fraction)
+                                                  cleaned.glare_fraction, row.coverage)
                 row.quality, row.flags = quality, ",".join(flags)
                 if compare_raw:
                     raw = Image.open(image_path)

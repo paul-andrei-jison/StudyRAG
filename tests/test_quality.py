@@ -149,3 +149,15 @@ def test_mixed_pdf_pages_in_equals_pages_out(tmp_path):
     records = read_pages(pages, reader, None)
     assert len(records) == 5 and reader.calls == 3
     assert [r.source_kind for r in records] == ["pdf-text"] * 2 + ["pdf-scan"] * 3
+
+
+def test_possible_omission_flagged_when_ocr_sees_more_words():
+    q, flags, _, _ = score_page(GOOD, (1000, 1400), 0.85, ocr_coverage=0.7)
+    assert "possible_omission" in flags and "low_agreement" not in flags
+    assert PageRecord(1, "a", "image", quality=q, flags=flags).needs_attention
+    assert "possible_omission" not in score_page(GOOD, (1000, 1400), 0.95, ocr_coverage=0.95)[1]
+
+
+def test_pipeline_records_coverage_and_flags_omission():
+    (rec,) = read_pages([img_page(1)], FakeReader([GOOD]), FakeOcr(text=GOOD + " plus a whole extra paragraph " * 30))
+    assert rec.ocr_coverage < 0.9 and "possible_omission" in rec.flags and rec.needs_attention

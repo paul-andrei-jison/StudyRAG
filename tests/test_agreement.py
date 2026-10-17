@@ -47,3 +47,19 @@ def test_rapidocr_reads_rendered_text():
                              font=ImageFont.load_default(size=70))
     text = RapidOcrEngine().read(img)
     assert agreement("Photosynthesis Worksheet Chloroplast", text).word_f1 > 0.6
+
+
+def test_dropped_paragraph_lowers_coverage_not_just_score():
+    full = TEXT + " " + "Stomata let the leaf exchange gases with the air around it every day"
+    a = agreement(TEXT, full)  # READER dropped the second sentence that the OCR saw
+    assert a.ocr_coverage < 0.6 and a.score > 0.5  # score alone would not have been alarming
+    assert agreement(full, full).ocr_coverage == 1.0
+
+
+def test_extra_reader_words_do_not_reduce_coverage():
+    assert agreement(TEXT + " extra words here", TEXT).ocr_coverage == 1.0
+
+
+def test_coverage_empty_cases():
+    assert agreement("", "some text").ocr_coverage == 0.0
+    assert agreement("some text", "").ocr_coverage == 1.0

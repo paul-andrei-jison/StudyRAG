@@ -46,13 +46,15 @@ def read_page(page: PageInput, reader: Reader, ocr: OcrEngine | None, max_edge: 
 
         if ocr is not None:
             try:
-                record.ocr_agreement = agreement(transcript.text, ocr.read(cleaned.image)).score
+                found = agreement(transcript.text, ocr.read(cleaned.image))
+                record.ocr_agreement, record.ocr_coverage = found.score, found.ocr_coverage
             except Exception as exc:  # the cross-check must never lose a page
                 log.warning("OCR cross-check failed on page %s: %s", page.page_number, exc)
                 record.flags.append("ocr_failed")
 
         quality, flags, ratio, cpm = score_page(record.text, cleaned.original_size,
-                                                record.ocr_agreement, cleaned.glare_fraction)
+                                                record.ocr_agreement, cleaned.glare_fraction,
+                                                record.ocr_coverage)
         record.quality, record.illegible_ratio, record.chars_per_megapixel = quality, ratio, cpm
         record.flags.extend(flags)
     except Exception as exc:  # record the failure; do not drop the page
