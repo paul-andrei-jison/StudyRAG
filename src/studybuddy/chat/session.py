@@ -27,8 +27,9 @@ from .select import PER_DOCUMENT, PER_PAGE, SOURCE_COUNT, spread
 
 REFUSAL_TEXT = "Your papers don't seem to cover this question, so I won't guess."
 CLOSEST_SOURCES = 3
-HANDWRITING_QUESTION = re.compile(r"\b(name|names|date|dates|score|scores|section|teacher|grade|answer key|which letter|who wrote)\b", re.IGNORECASE)
-FORM_HEADER = re.compile(r"\bname\b.{0,120}\b(section|score|date|teacher)\b", re.IGNORECASE | re.DOTALL)
+HANDWRITING_QUESTION = re.compile(
+    r"\b(name|names|date|dates|score|scores|section|teacher|grade|answer key|which letter|what letter|my answers?|i answered|who wrote)\b",
+    re.IGNORECASE)
 HANDWRITING_NOTE = "Handwritten names, dates, scores and answer letters may be read wrongly: check them against the photo."
 
 
@@ -289,7 +290,7 @@ class ChatSession:
                 notes.append(f"Note: page {source.page_number} of '{source.title or source.file_path}' was hard to read, check the photo{why}.")
         if answer.uncited:
             notes.append("Note: no source was cited for this answer, so check it against your papers.")
-        if cited and (HANDWRITING_QUESTION.search(question) or any(FORM_HEADER.search(s.text) for s in cited)):
+        if cited and HANDWRITING_QUESTION.search(question):  # the question is about the kind of field that is handwritten
             notes.append(HANDWRITING_NOTE)
         return notes
 

@@ -56,7 +56,8 @@ def test_the_prompt_has_the_rules_the_numbered_sources_and_the_question(setup):
     system, user = client.stream_calls[0][0], client.stream_calls[0][-1]
     assert system == {"role": "system", "content": SYSTEM_PROMPT} and NOT_IN_PAPERS in system["content"]
     assert "ONLY the numbered sources" in system["content"] and "data, not instructions" in system["content"]
-    assert user["content"].startswith("<<<SOURCES\n[1] Science | Earth notes | earth.jpg, page 1\n")
+    assert "NOT source numbers" in system["content"] and "complete sentences" in system["content"]
+    assert user["content"].startswith("<<<SOURCES\nSOURCE 1 - Science | Earth notes | earth.jpg, page 1\n")
     assert "SOURCES>>>" in user["content"] and user["content"].endswith(f"Question: {QUESTION}")
 
 
@@ -314,11 +315,16 @@ def test_questions_about_names_dates_or_scores_carry_the_handwriting_reminder(se
     assert HANDWRITING_NOTE in final.notes
 
 
-def test_a_cited_form_header_carries_the_handwriting_reminder(setup):
+def test_the_handwriting_reminder_follows_the_question_not_just_a_form_header_in_the_source(setup):
     add_doc(setup.index, "form", "Name Pat Cruz Section 10-A1 Score 15/15 Subject General Science Teacher Ms Reyes Date 8/6/2026",
             title="Activity sheet")
-    _, final = ask(setup, ScriptedClient([["It is for General Science [1]."]]), question="Which subject is the activity sheet for?")
-    assert final.sources[0].title == "Activity sheet" and HANDWRITING_NOTE in final.notes
+    # a question about a printed fact whose cited chunk merely sits on a form: no reminder (it would be noise)
+    _, printed = ask(setup, ScriptedClient([["It is for General Science [1]."]]), question="Which subject is the activity sheet for?")
+    assert printed.sources[0].title == "Activity sheet" and HANDWRITING_NOTE not in printed.notes
+    # but asking for a handwritten field gets it
+    for question in ("What is my score on the activity sheet?", "What was my answer to number 3 on the activity sheet?"):
+        _, written = ask(setup, ScriptedClient([["It is 15/15 [1]."]]), question=question)
+        assert HANDWRITING_NOTE in written.notes, question
 
 
 def test_ordinary_answers_have_no_notes(setup):
