@@ -105,3 +105,24 @@ def test_embed_prefixes_default_empty(settings):
     c.embed_documents(["a"])
     c.embed_queries(["q"])
     assert [json.loads(r.content)["input"] for r in fake.requests] == [["a"], ["q"]]
+
+
+def test_vision_full_reports_finish_reason(settings):
+    def handler(request):
+        return httpx.Response(200, json={"choices": [{"message": {"content": "<think>x</think>hi"},
+                                                      "finish_reason": "length"}]})
+    c = LMStudioClient(settings, transport=httpx.MockTransport(handler))
+    out = c.vision_full("read", b"img")
+    assert (out.text, out.finish_reason) == ("hi", "length")
+    assert c.vision("read", b"img") == "hi"
+
+
+def test_context_overflow_has_own_error(settings):
+    from studybuddy.errors import ContextOverflowError
+    msg = "n_keep: 40009>= n_ctx: 13824). Try to load the model with a larger context length"
+    c = LMStudioClient(settings, transport=httpx.MockTransport(lambda r: httpx.Response(400, json={"error": msg})))
+    with pytest.raises(ContextOverflowError):
+        c.chat([])
+    # still an LLMError for callers that do not care
+    with pytest.raises(LLMError):
+        c.chat([])
