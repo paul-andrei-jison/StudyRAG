@@ -48,6 +48,7 @@ def sanitize_component(text: str, max_len: int, fallback: str = FALLBACK) -> str
 def slugify(text: str, max_len: int = MAX_SLUG_CHARS) -> str:
     """Lower-case ASCII words joined by hyphens, cut at a word boundary where possible."""
     folded = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii").lower()
+    folded = folded.replace("'", "").replace("`", "")  # "Earth's" is "earths", not "earth-s" (curly ones fold away above)
     slug = re.sub(r"[^a-z0-9]+", "-", folded).strip("-")
     if len(slug) > max_len:
         cut = slug[:max_len]

@@ -59,8 +59,10 @@ def test_sanitize_keeps_unicode_letters():
 
 @pytest.mark.parametrize("text,slug", [
     ("Photosynthesis Worksheet", "photosynthesis-worksheet"),
-    ("  Earth's  Magnetic Field!! ", "earth-s-magnetic-field"),
-    ("Café Géographie: l'été", "cafe-geographie-l-ete"),
+    ("  Earth's  Magnetic Field!! ", "earths-magnetic-field"),
+    ("Earth’s Atmosphere", "earths-atmosphere"),
+    ("Newton's 2nd Law: F=ma", "newtons-2nd-law-f-ma"),
+    ("Café Géographie: l'été", "cafe-geographie-lete"),
     ("Chapter 4 - Forces & Motion (Part 2)", "chapter-4-forces-motion-part-2"),
     ("日本語のノート", "untitled"),
     ("", "untitled"),
