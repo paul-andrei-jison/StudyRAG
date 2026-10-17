@@ -26,6 +26,10 @@ class PermanentIngestError(StudyBuddyError):
     """A document can never be ingested as it is (corrupt, unsupported type, ...): retrying will not help."""
 
 
+class ChatContextError(StudyBuddyError):
+    """The model's context is too small to hold a chat prompt (system prompt, question, a source and the answer)."""
+
+
 class IndexStoreError(StudyBuddyError):
     """The search index is unusable or was asked to do something inconsistent."""
 
