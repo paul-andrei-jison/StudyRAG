@@ -21,6 +21,7 @@ from PIL import Image
 from .agreement import agreement
 from .images import clean_image
 from .ocr import OcrEngine
+from .orientation import probe_of
 from .quality import score_page
 
 DRAFT_MARKER = "DRAFT - proofread against the page, then delete this line"
@@ -146,7 +147,7 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
         cleaned = None
         ocr_text = ""
         try:
-            cleaned = clean_image(image_path, max_edge=max_edge)
+            cleaned = clean_image(image_path, max_edge=max_edge, rotation_probe=probe_of(ocr))
             if ocr is not None:
                 ocr_text = ocr.read(cleaned.image)
                 shared.ocr_cer, shared.ocr_wer = error_rates(reference, ocr_text)

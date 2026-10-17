@@ -12,6 +12,7 @@ from ..errors import ReaderError
 from .agreement import agreement
 from .images import clean_image
 from .ocr import OcrEngine
+from .orientation import probe_of
 from .quality import PageRecord, score_page
 from .transcribe import Reader
 
@@ -38,8 +39,9 @@ def read_page(page: PageInput, reader: Reader, ocr: OcrEngine | None, max_edge: 
     try:
         if page.image is None:
             raise ReaderError("page has neither an image nor a text layer")
-        cleaned = clean_image(page.image, max_edge=max_edge)
+        cleaned = clean_image(page.image, max_edge=max_edge, rotation_probe=probe_of(ocr))
         record.image_size, record.steps = cleaned.original_size, cleaned.steps
+        record.auto_rotation = cleaned.auto_rotation
         record.skew_deg, record.page_found = cleaned.skew_deg, cleaned.page_found
         transcript = reader.transcribe(cleaned.image)
         record.text, record.sent_size = transcript.text, transcript.image_size

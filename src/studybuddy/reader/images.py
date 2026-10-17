@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+from .orientation import LineProbe, detect_rotation, rotate_ccw
+
 DETECT_EDGE = 1000          # page detection runs on a downscaled copy for speed and noise
 MIN_PAGE_AREA = 0.25        # a detected page must cover at least this share of the frame
 SKIP_FLATTEN_AREA = 0.97    # a page filling the frame is already cropped: do not warp
@@ -29,6 +31,7 @@ class CleanResult:
     skew_deg: float = 0.0                 # rotation applied to straighten text (degrees)
     glare_fraction: float = 0.0           # share of pixels blown out in the source
     steps: list[str] = field(default_factory=list)
+    auto_rotation: int = 0                # degrees ccw applied by orientation detection (no EXIF tag)
 
 
 def load_image(source: bytes | Path | str | Image.Image) -> tuple[Image.Image, bool]:
@@ -129,11 +132,19 @@ def boost_contrast(gray: np.ndarray) -> np.ndarray:
     return cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
 
 
-def clean_image(source: bytes | Path | str | Image.Image, max_edge: int = 2048) -> CleanResult:
+def clean_image(source: bytes | Path | str | Image.Image, max_edge: int = 2048,
+                rotation_probe: LineProbe | None = None) -> CleanResult:
+    """Clean a page photo. With a rotation_probe, pages lacking an EXIF rotation are auto-uprighted."""
     pil, rotated = load_image(source)
-    result = CleanResult(image=pil, original_size=pil.size, exif_rotated=rotated)
+    auto = 0
+    if rotation_probe is not None and not rotated:
+        auto = detect_rotation(pil, rotation_probe)
+        pil = rotate_ccw(pil, auto)
+    result = CleanResult(image=pil, original_size=pil.size, exif_rotated=rotated, auto_rotation=auto)
     if rotated:
         result.steps.append("exif-rotate")
+    if auto:
+        result.steps.append(f"auto-rotate-{auto}")
 
     bgr = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
     gray0 = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)

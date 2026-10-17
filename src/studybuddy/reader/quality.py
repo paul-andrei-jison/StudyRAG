@@ -34,6 +34,7 @@ class PageRecord:
     sent_size: tuple[int, int] | None = None    # size actually sent to the READER
     steps: list[str] = field(default_factory=list)
     skew_deg: float = 0.0
+    auto_rotation: int = 0                # degrees ccw applied because the photo had no EXIF rotation
     page_found: bool = False
 
     @property
