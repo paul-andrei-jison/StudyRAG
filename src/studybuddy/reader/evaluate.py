@@ -23,10 +23,11 @@ from .images import clean_image
 from .ocr import OcrEngine
 from .orientation import probe_of
 from .quality import score_page
+from .regions import HW_SUFFIX, SplitRates, load_regions, split_error_rates
+from .textnorm import normalise_text
 
 DRAFT_MARKER = "DRAFT - proofread against the page, then delete this line"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-_WS = re.compile(r"\s+")
 
 
 class TranscribesImages(Protocol):
@@ -56,6 +57,17 @@ class Row:
     flags: str = ""
     reader_seconds: float | None = None
     raw_reader_cer: float | None = None   # only with compare_raw: READER on the uncleaned image
+    raw_reader_wer: float | None = None
+    # Printed vs handwritten split (needs a <stem>.hw sidecar; hw_* stay None on pages without one)
+    hw_words: int = 0
+    reader_printed_cer: float | None = None
+    reader_printed_wer: float | None = None
+    reader_hw_cer: float | None = None
+    reader_hw_wer: float | None = None
+    ocr_printed_cer: float | None = None
+    ocr_printed_wer: float | None = None
+    ocr_hw_cer: float | None = None
+    ocr_hw_wer: float | None = None
     error: str = ""
 
 
@@ -64,18 +76,6 @@ class Report:
     rows: list[Row]
     summary: dict[str, dict]
     skipped: SamplePairs
-
-
-# Typographic quotes the READER sometimes emits where the page (and so the reference) uses plain ones.
-_QUOTES = str.maketrans({
-    "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'",
-    "“": '"', "”": '"', "„": '"', "‟": '"', "″": '"',
-})
-
-
-def normalise_text(text: str) -> str:
-    """Unify curly/straight quotes and collapse whitespace. Case, punctuation and the rest still count."""
-    return _WS.sub(" ", text.translate(_QUOTES)).strip()
 
 
 def error_rates(reference: str, hypothesis: str) -> tuple[float, float]:
@@ -139,8 +139,22 @@ def summarise(rows: list[Row]) -> dict[str, dict]:
             "ocr_wer": _mean([r.ocr_wer for r in mine if r.ocr_wer is not None]),
             "agreement": _mean([r.agreement for r in ok if r.agreement is not None]),
             "raw_reader_cer": _mean([r.raw_reader_cer for r in ok if r.raw_reader_cer is not None]),
+            "raw_reader_wer": _mean([r.raw_reader_wer for r in ok if r.raw_reader_wer is not None]),
         }
+        for who in ("reader", "ocr"):
+            for part in ("printed", "hw"):
+                for metric in ("cer", "wer"):
+                    name = f"{who}_{part}_{metric}"
+                    summary[model][name] = _mean([getattr(r, name) for r in ok if getattr(r, name) is not None])
     return summary
+
+
+def _set_split(row: Row, who: str, split: SplitRates) -> None:
+    row.hw_words = split.hw_words
+    setattr(row, f"{who}_printed_cer", split.printed_cer)
+    setattr(row, f"{who}_printed_wer", split.printed_wer)
+    setattr(row, f"{who}_hw_cer", split.hw_cer)
+    setattr(row, f"{who}_hw_wer", split.hw_wer)
 
 
 def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesImages],
@@ -154,11 +168,15 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
         shared = Row(image=image_path.name, model="")
         cleaned = None
         ocr_text = ""
+        spans: list[tuple[int, int]] = []
         try:
+            spans = load_regions(reference, ref_path.with_suffix(HW_SUFFIX))
             cleaned = clean_image(image_path, max_edge=max_edge, rotation_probe=probe_of(ocr))
             if ocr is not None:
                 ocr_text = ocr.read(cleaned.image)
                 shared.ocr_cer, shared.ocr_wer = error_rates(reference, ocr_text)
+                if spans:
+                    _set_split(shared, "ocr", split_error_rates(reference, ocr_text, spans))
         except Exception as exc:
             shared.error = f"{type(exc).__name__}: {exc}"
 
@@ -172,6 +190,8 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
                 text = reader.transcribe(cleaned.image).text
                 row.reader_seconds = round(time.monotonic() - start, 1)
                 row.reader_cer, row.reader_wer = error_rates(reference, text)
+                if spans:
+                    _set_split(row, "reader", split_error_rates(reference, text, spans))
                 if ocr is not None:
                     found = agreement(text, ocr_text)
                     row.agreement, row.coverage = found.score, found.ocr_coverage
@@ -185,7 +205,7 @@ def evaluate(pairs: list[tuple[Path, Path]], readers: Mapping[str, TranscribesIm
                     if max(raw.size) > max_edge:
                         r = max_edge / max(raw.size)
                         raw = raw.resize((round(raw.width * r), round(raw.height * r)), Image.LANCZOS)
-                    row.raw_reader_cer = error_rates(reference, reader.transcribe(raw).text)[0]
+                    row.raw_reader_cer, row.raw_reader_wer = error_rates(reference, reader.transcribe(raw).text)
             except Exception as exc:
                 row.error = f"{type(exc).__name__}: {exc}"
             rows.append(row)
@@ -224,10 +244,22 @@ def format_report(report: Report) -> str:
     for r in report.rows:
         lines.append(f"{r.image[:32]:32} {r.model[:24]:24} {_fmt(r.reader_cer):>6} {_fmt(r.reader_wer):>6} "
                      f"{_fmt(r.ocr_cer):>6} {_fmt(r.ocr_wer):>6} {_fmt(r.agreement):>6}  {r.error or r.flags}")
+    if any(r.hw_words for r in report.rows):
+        lines.append("")
+        lines.append("Printed vs handwritten (from <stem>.hw sidecars; insertions count as printed errors)")
+        lines.append(f"{'image':32} {'hw words':>8} {'rCERp':>6} {'rWERp':>6} {'rCERh':>6} {'rWERh':>6} "
+                     f"{'oCERp':>6} {'oWERp':>6} {'oCERh':>6} {'oWERh':>6}")
+        for r in report.rows:
+            if r.hw_words:
+                lines.append(f"{r.image[:32]:32} {r.hw_words:>8} {_fmt(r.reader_printed_cer):>6} "
+                             f"{_fmt(r.reader_printed_wer):>6} {_fmt(r.reader_hw_cer):>6} {_fmt(r.reader_hw_wer):>6} "
+                             f"{_fmt(r.ocr_printed_cer):>6} {_fmt(r.ocr_printed_wer):>6} "
+                             f"{_fmt(r.ocr_hw_cer):>6} {_fmt(r.ocr_hw_wer):>6}")
     lines.append("")
     lines.append("Summary (mean over pages; r = READER, o = classic OCR; lower CER/WER is better)")
     for model, s in report.summary.items():
-        raw = f", READER CER on uncleaned images {_fmt(s['raw_reader_cer'])}" if s["raw_reader_cer"] is not None else ""
+        raw = (f", READER on uncleaned images CER {_fmt(s['raw_reader_cer'])} WER {_fmt(s['raw_reader_wer'])}"
+               if s["raw_reader_cer"] is not None else "")
         lines.append(f"  {model}: pages={s['pages']} errors={s['errors']} READER CER={_fmt(s['reader_cer'])} "
                      f"WER={_fmt(s['reader_wer'])} | OCR CER={_fmt(s['ocr_cer'])} WER={_fmt(s['ocr_wer'])} "
                      f"| agreement={_fmt(s['agreement'])}{raw}")
