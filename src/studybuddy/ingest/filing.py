@@ -17,7 +17,7 @@ from PIL import Image, ImageOps
 
 from ..errors import StudyBuddyError
 from .files import FileInfo, sha256_file
-from .naming import claim_unique_dir, claim_unique_file, library_stem, subject_folder
+from .naming import NamingError, claim_unique_dir, claim_unique_file, fit_name, library_stem, subject_folder
 
 PDF_MAX_EDGE = 2500   # the combined album PDF is a convenience copy; the page photos keep full resolution
 PDF_QUALITY = 90
@@ -114,13 +114,22 @@ class Filer:
                 final = claim_unique_file(folder, f"page-{number:02d}", info.ext)
                 self._copy_verified(src, final, digest)
                 pages.append(final)
-            pdf = claim_unique_file(folder, folder.name, ".pdf")
+            pdf = claim_unique_file(folder, self._pdf_stem(folder), ".pdf")
             self._build_pdf(pages, pdf)
         except BaseException:
             shutil.rmtree(folder, ignore_errors=True)  # we just created this folder: it holds only our files
             _rmdir_if_empty(folder.parent)
             raise
         return FiledDocument(folder, pages, pdf, [folder])
+
+    @staticmethod
+    def _pdf_stem(folder: Path) -> str:
+        """The PDF is named after its folder; if a very long library path would cut that name short, call it `album`."""
+        try:
+            fitted = fit_name(folder, folder.name, ".pdf")
+        except NamingError:
+            return "album"
+        return folder.name if fitted == f"{folder.name}.pdf" else "album"
 
     def _build_pdf(self, pages: Sequence[Path], target: Path) -> None:
         temp = _temp_name(target)

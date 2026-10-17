@@ -276,3 +276,24 @@ def test_safe_move_keeps_the_source_when_the_copy_cannot_be_verified(tmp_path, i
     with pytest.raises(FilingError, match="does not match"):
         safe_move(src, tmp_path / "dest")
     assert src.exists() and list((tmp_path / "dest").iterdir()) == []
+
+
+def test_album_pdf_is_named_after_its_folder_when_there_is_room(lib, inbox):
+    filed = file_album(lib, [photo(inbox / "a.jpg", color=(1, 1, 1)), photo(inbox / "b.jpg", color=(2, 2, 2))])
+    assert filed.pdf_path.name == filed.final_path.name + ".pdf"
+
+
+def test_album_pdf_falls_back_to_a_short_name_when_the_library_path_is_very_long(tmp_path, inbox):
+    # a library path of 132 characters: the page photos still fit under the 240-character limit but a PDF named
+    # after the (56-character) folder would not
+    pad = 132 - len(str(tmp_path)) - 1
+    long_lib = tmp_path / ("L" * pad)
+    assert len(str(long_lib)) == 132
+    filed = file_album(long_lib, [photo(inbox / "a.jpg", color=(3, 3, 3)), photo(inbox / "b.jpg", color=(4, 4, 4))],
+                       title="Earth's life supporting features")
+    assert filed.final_path.name == "2026-10-17_1425_Science_earths-life-supporting-features"  # the folder name is intact
+    assert filed.pdf_path.name == "album.pdf" and filed.pdf_path.exists()
+    assert len(str(filed.pdf_path)) < 240 and len(str(filed.page_files[0])) < 240
+    pdf = pdfium.PdfDocument(str(filed.pdf_path))
+    assert len(pdf) == 2
+    pdf.close()
