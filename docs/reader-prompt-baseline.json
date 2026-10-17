@@ -4,9 +4,9 @@
   "reader_model": "qwen/qwen3-vl-8b",
   "samples_dir": "samples",
   "pages": 3,
-  "reader_cer": 0.012,
-  "reader_wer": 0.0196,
-  "ocr_cer": 0.2846,
+  "reader_cer": 0.0107,
+  "reader_wer": 0.0178,
+  "ocr_cer": 0.2835,
   "agreement": 0.8535,
-  "note": "3 real Telegram-compressed handout photos (960x1280, 2 with handwriting). Page ...335 reference still has the unfilled 'corrected by: [TYPE THE NAME FROM YOUR PAPER]' line, which inflates its CER (0.0076 vs 0.0003 without it). READER printed WER 0.029/0.000, handwritten WER 0.233/0.438; checkbox labels Laboratory/Others dropped on ...334."
+  "note": "3 real Telegram-compressed handout photos (960x1280, 2 with handwriting), references fully proofread. Checkbox labels dropped on one page; handwritten WER far above printed."
 }
