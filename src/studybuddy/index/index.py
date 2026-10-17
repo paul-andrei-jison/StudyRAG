@@ -6,8 +6,10 @@ or chunks without a vector; `check()` finds them and `repair()` fixes them.
 """
 from __future__ import annotations
 
+import functools
 import json
 import shutil
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
@@ -25,6 +27,16 @@ INDEX_DIRNAME = "index"
 DB_NAME = "studybuddy.db"
 VECTORS_NAME = "vectors"
 REINDEX_HINT = "Run: python scripts/index_admin.py reindex"
+
+
+def _serialized(method):
+    """Run a write method under the index's write lock. The ingest service already funnels writes through one
+    worker; this keeps the index consistent even if some other code path writes too."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._write_lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 
 
 class Embedder(Protocol):
@@ -88,6 +100,7 @@ class Index:
         self.embedder = embedder
         self.store = store
         self.vectors = vectors
+        self._write_lock = threading.RLock()
 
     @classmethod
     def open(cls, settings: Settings, embedder: Embedder, check_guard: bool = True) -> "Index":
@@ -121,6 +134,7 @@ class Index:
 
     # ---- writes ---------------------------------------------------------------------------
 
+    @_serialized
     def add_document(self, meta: DocumentMeta, records: Sequence[PageRecord],
                      expected_pages: int | None = None) -> AddResult:
         """Index a document. Every record becomes a page row; pages with text become chunks.
@@ -160,11 +174,13 @@ class Index:
             raise
         return AddResult(doc_id, True, len(chunk_ids))
 
+    @_serialized
     def delete_document(self, doc_id: int) -> int:
         ids = self.store.delete_document(doc_id)
         self.vectors.delete(ids)
         return len(ids)
 
+    @_serialized
     def update_document(self, doc_id: int, *, subject: str | None = None, title: str | None = None,
                         summary: str | None = None, file_path: str | None = None) -> None:
         self.store.update_document(doc_id, subject=subject, title=title, summary=summary, file_path=file_path)
@@ -190,6 +206,7 @@ class Index:
         have, stored = self.store.chunk_ids(), self.vectors.ids()
         return Consistency(missing_vectors=have - stored, orphan_vectors=stored - have)
 
+    @_serialized
     def repair(self) -> Consistency:
         """Delete orphan vectors and embed chunks that lack one. Returns what was fixed."""
         found = self.check()
@@ -216,6 +233,7 @@ class Index:
                       recorded["model"] if recorded else None, recorded.get("doc_prefix") if recorded else None,
                       self.settings.embed_model, self.settings.embed_doc_prefix, self.check(), problem)
 
+    @_serialized
     def reindex(self, progress: Callable[[int, int], None] | None = None) -> int:
         """Re-embed every chunk from SQLite with the CURRENT model and document prefix.
 

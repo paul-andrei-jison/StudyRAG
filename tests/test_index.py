@@ -256,3 +256,26 @@ def test_reset_deletes_the_index_but_never_the_library(settings, emb):
     fresh.close()
     assert reset_index(settings) == [settings.data_dir / "index"]  # the fresh open recreated the (empty) index folder
     assert reset_index(settings) == []  # nothing left: reset is idempotent
+
+
+def test_concurrent_writes_straight_to_the_index_stay_consistent(settings):
+    """Even without the ingest service in front, the index serialises its own writes."""
+    import threading
+    idx = Index.open(settings, FakeEmbedder())
+    errors = []
+
+    def add(i):
+        try:
+            idx.add_document(meta(f"h{i}", title=f"Doc {i}"), [rec(1, f"{PARA} Distinct words number {i} here.")])
+        except Exception as exc:  # pragma: no cover - the assertion below reports it
+            errors.append(exc)
+
+    threads = [threading.Thread(target=add, args=(i,)) for i in range(15)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert idx.store.counts() == {"documents": 15, "pages": 15, "chunks": 15} and idx.vectors.count() == 15
+    assert idx.check().ok
+    idx.close()
