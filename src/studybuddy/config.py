@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_TAG_TIMEOUT = 300
+DEFAULT_READER_MAX_EDGE = 2048  # see docs/reader-image-policy.md
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class Settings:
     # Task prefixes some embedding models need (e.g. nomic: "search_document: "/"search_query: ").
     embed_doc_prefix: str = ""
     embed_query_prefix: str = ""
+    reader_max_edge: int = DEFAULT_READER_MAX_EDGE
+    samples_dir: Path | None = None  # image + .txt reference pairs for the evaluation script
 
 
 def _path(value: str) -> Path:
@@ -65,6 +68,15 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
     except ValueError as exc:
         raise ConfigError("SB_TAG_TIMEOUT_SECONDS must be an integer") from exc
 
+    try:
+        max_edge = int(get("SB_READER_MAX_EDGE", str(DEFAULT_READER_MAX_EDGE)))
+    except ValueError as exc:
+        raise ConfigError("SB_READER_MAX_EDGE must be an integer") from exc
+    if max_edge < 256:
+        raise ConfigError("SB_READER_MAX_EDGE must be at least 256 pixels")
+
+    samples = get("SB_SAMPLES_DIR")
+
     user_id = get("TELEGRAM_USER_ID")
     try:
         telegram_user_id = int(user_id) if user_id else None
@@ -89,6 +101,8 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         telegram_user_id=telegram_user_id,
         embed_doc_prefix=env.get("EMBED_DOC_PREFIX", ""),
         embed_query_prefix=env.get("EMBED_QUERY_PREFIX", ""),
+        reader_max_edge=max_edge,
+        samples_dir=_path(samples) if samples else None,
     )
 
 
@@ -97,7 +111,10 @@ def validate_dirs(settings: Settings, repo_root: Path = REPO_ROOT) -> None:
     repo_root = repo_root.resolve()
     lib, data = settings.library_dir, settings.data_dir
 
-    for label, d in (("SB_LIBRARY_DIR", lib), ("SB_DATA_DIR", data)):
+    checked = [("SB_LIBRARY_DIR", lib), ("SB_DATA_DIR", data)]
+    if settings.samples_dir:
+        checked.append(("SB_SAMPLES_DIR", settings.samples_dir))
+    for label, d in checked:
         if _is_within(d, repo_root) or _is_within(repo_root, d):
             raise ConfigError(f"{label} ({d}) must be outside the repo ({repo_root})")
     if _is_within(lib, data) or _is_within(data, lib):
