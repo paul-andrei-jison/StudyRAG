@@ -84,7 +84,7 @@ def make_snippet(text: str, terms: list[str], width: int = SNIPPET_CHARS) -> str
     start = max(0, min(positions) - width // 4) if positions else 0
     end = min(len(flat), start + width)
     start = max(0, end - width)
-    return ("… " if start else "") + flat[start:end].strip() + (" …" if end < len(flat) else "")
+    return ("... " if start else "") + flat[start:end].strip() + (" ..." if end < len(flat) else "")
 
 
 def search(index: Index, query: str, k: int = 8, subject: str | None = None, mode: str = "hybrid",

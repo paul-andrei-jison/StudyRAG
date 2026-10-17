@@ -74,7 +74,7 @@ def test_rrf_math_and_weights():
 def test_snippet_centres_on_the_first_matching_term():
     text = "filler " * 80 + "the habitable zone is special " + "filler " * 80
     snippet = make_snippet(text, ["habitable"])
-    assert "habitable zone" in snippet and len(snippet) < 300 and snippet.startswith("…") and snippet.endswith("…")
+    assert "habitable zone" in snippet and len(snippet) < 300 and snippet.startswith("...") and snippet.endswith("...")
     assert make_snippet("short text", ["short"]) == "short text"
 
 
