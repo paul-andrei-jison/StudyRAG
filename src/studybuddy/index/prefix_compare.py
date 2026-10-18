@@ -68,6 +68,8 @@ def load_questions(path: Path) -> list[Question]:
         raise ValueError(f"{path.name} must be a non-empty JSON list")
     questions = []
     for i, item in enumerate(data, 1):
+        if isinstance(item, dict) and item.get("kind") == "overview":
+            continue      # whole-document questions have no single answering chunk
         if not isinstance(item, dict) or not item.get("question") or not item.get("expect"):
             raise ValueError(f"{path.name} entry {i} needs 'question' and 'expect'")
         expect = item["expect"] if isinstance(item["expect"], list) else [item["expect"]]

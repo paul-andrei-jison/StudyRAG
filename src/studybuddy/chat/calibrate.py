@@ -55,7 +55,9 @@ class Rates:
 
 
 def load_cases(samples_dir: Path) -> list[Case]:
-    cases = [Case(q["question"], ANSWERABLE) for q in json.loads((samples_dir / "questions.json").read_text(encoding="utf-8"))]
+    items = json.loads((samples_dir / "questions.json").read_text(encoding="utf-8"))
+    # items with "kind": "overview" ask about whole documents; they are measured by scripts/eval_overview.py, not by the gate
+    cases = [Case(q["question"], ANSWERABLE) for q in items if q.get("kind") != "overview"]
     path = samples_dir / "unanswerable.json"
     if path.is_file():
         for item in json.loads(path.read_text(encoding="utf-8")):
