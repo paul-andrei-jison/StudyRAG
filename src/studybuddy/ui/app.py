@@ -8,31 +8,30 @@ from __future__ import annotations
 import html
 
 import gradio as gr
+from starlette.middleware import Middleware
 
 from ..config import network_exposure
 from ..errors import StudyBuddyError
 from .chat import DONE, source_choices, source_details, sources_caption, stream_turn
 from .library import TABLE_HEADERS
+from .offline import StripExternalScripts
 from .runtime import Runtime
+from .theme import THEME_JS, build_theme, css
 from .uploads import AUTO_DETECT, submit_uploads
 
 ALL_SUBJECTS = "All subjects"
 TIMER_SECONDS = 3.0
 MAX_UPLOAD = "100mb"
 UPLOAD_TYPES = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".pdf"]
-CSS = """
-.sb-warning {background:#b00020;color:#fff;padding:12px 16px;border-radius:8px;font-weight:600;margin-bottom:8px}
-.sb-warning * {color:#fff}
-"""
 
 
 def exposure_banner(host: str) -> str | None:
     warning = network_exposure(host)
     if warning is None:
         return None
-    return (f"<div class='sb-warning'>WARNING: this app is reachable from the network ({html.escape(host)}) and has no login. "
+    return (f"<div class='sb-warning' role='alert'>This app can be reached from the network ({html.escape(host)}) and has no login. "
             f"Anyone who can connect can read, change and delete your study library. "
-            f"Set SB_HOST=127.0.0.1 and restart unless you really mean this.</div>")
+            f"Set SB_HOST=127.0.0.1 and restart unless you meant this.</div>")
 
 
 def _subject_filter(value: str | None) -> str | None:
@@ -64,11 +63,15 @@ def build_app(rt: Runtime) -> gr.Blocks:
     except StudyBuddyError:
         start_names = []
 
-    with gr.Blocks(title="Study Buddy", css=CSS) as demo:
-        gr.Markdown("# Study Buddy\nAsk questions about your own papers. Answers cite the page they came from.")
+    with gr.Blocks(title="Study Buddy", theme=build_theme(), css=css(), js=THEME_JS, fill_width=True) as demo, \
+            gr.Column(elem_id="sb-root"):
         banner = exposure_banner(rt.settings.host)
         if banner:
             gr.HTML(banner)
+        with gr.Row(elem_id="sb-header"):
+            gr.HTML("<span id='sb-wordmark'>Study Buddy</span>", padding=False)
+            with gr.Row(elem_id="sb-tools"):
+                gr.Button("Dark mode", elem_id="sb-theme", variant="secondary", min_width=44)
 
         # ---- status panel (every tab) ---------------------------------------------------------
         with gr.Accordion("Status", open=True):
@@ -92,9 +95,9 @@ def build_app(rt: Runtime) -> gr.Blocks:
         timer.tick(status, outputs=status_outputs, api_name=False, show_progress="hidden")
         retry_btn.click(retry_failed, outputs=[retry_msg, *status_outputs], api_name="retry_failed")
 
-        with gr.Tabs():
+        with gr.Tabs(elem_id="sb-tabs"):
             # ---- chat ------------------------------------------------------------------------
-            with gr.Tab("Chat") as chat_tab:
+            with gr.Tab("Ask") as chat_tab:
                 session_state = gr.State(None)
                 answer_state = gr.State(None)
                 with gr.Row():
@@ -271,7 +274,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 cancel_btn.click(lambda: gr.update(visible=False), None, [confirm_group], api_name=False)
 
             # ---- upload ----------------------------------------------------------------------
-            with gr.Tab("Upload") as upload_tab:
+            with gr.Tab("Add") as upload_tab:
                 gr.Markdown("Drop photos of your papers or a PDF. They are read in the background; the status panel shows progress.")
                 files = gr.File(label="Photos or PDF", file_count="multiple", file_types=UPLOAD_TYPES, type="filepath")
                 with gr.Row():
@@ -307,4 +310,4 @@ def build_app(rt: Runtime) -> gr.Blocks:
 def launch(demo: gr.Blocks, host: str, port: int | None, **kwargs):
     """Start serving. No `allowed_paths`, no sharing link, no analytics."""
     return demo.launch(server_name=host, server_port=port, share=False, max_file_size=MAX_UPLOAD, ssr_mode=False,
-                       inbrowser=False, show_error=False, **kwargs)
+                       inbrowser=False, show_error=False, app_kwargs={"middleware": [Middleware(StripExternalScripts)]}, **kwargs)

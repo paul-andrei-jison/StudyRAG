@@ -1,0 +1,134 @@
+"""Development tool: screenshot every screen at phone and desktop width, light and dark, and run layout checks.
+
+  python scripts/ui_screenshots.py [OUT_DIR] [--only NAME ...]
+
+Needs `pip install playwright` (development only, NOT in requirements.txt) and Microsoft Edge (it drives the installed Edge, so no
+browser download). Serves scripts/ui_demo.py: SYNTHETIC papers and a fake model, in a temporary folder. Never your real data.
+Checks for every scene: no sideways scrolling, touch targets of at least 44 px, no request to any host except 127.0.0.1, no
+console errors. Prints a table; exit code 1 if a check failed. Images go to OUT_DIR (default: a temporary folder; never the repo).
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from ui_demo import build_demo  # noqa: E402
+
+SIZES = {"phone": (390, 844), "desktop": (1280, 800)}
+MODES = ("light", "dark")
+MIN_TARGET = 44
+
+JS_OVERFLOW = "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
+JS_SMALL_TARGETS = """
+(min) => [...document.querySelectorAll('#sb-root button, #sb-root [role=tab], #sb-root a[href], #sb-root input:not([type=hidden]):not([type=file]), #sb-root textarea')]
+  .filter(e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+                 return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && (r.height < min - 0.5 || r.width < min - 0.5); })
+  .map(e => (e.id || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().slice(0, 40) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height))
+"""
+
+
+def wait_app(page) -> None:
+    page.wait_for_selector("#sb-root", timeout=30000)
+    page.wait_for_timeout(600)
+
+
+def tab(page, name: str) -> None:
+    page.get_by_role("tab", name=name, exact=True).click()
+    page.wait_for_timeout(500)
+
+
+# ---- scenes: each takes (page, demo) and leaves the screen ready to photograph -------------------------------------------
+
+def scene_ask_empty(page, demo):
+    tab(page, "Ask")
+
+
+def scene_library(page, demo):
+    tab(page, "Library")
+
+
+def scene_add(page, demo):
+    tab(page, "Add")
+
+
+SCENES = {
+    "ask-empty": scene_ask_empty,
+    "library": scene_library,
+    "add": scene_add,
+}
+
+
+def safe(text: str) -> str:
+    return text.encode("ascii", "replace").decode()
+
+
+def run(out: Path, only: list[str] | None) -> int:
+    from playwright.sync_api import sync_playwright
+
+    failures: list[str] = []
+    out.mkdir(parents=True, exist_ok=True)
+    rows = []
+    with tempfile.TemporaryDirectory(prefix="sb-shots-", ignore_cleanup_errors=True) as tmp, sync_playwright() as pw:
+        browser = pw.chromium.launch(channel="msedge", headless=True)
+        for name, scene in SCENES.items():
+            if only and name not in only:
+                continue
+            for size_name, (width, height) in SIZES.items():
+                for mode in MODES:
+                    root = Path(tmp) / f"{name}-{size_name}-{mode}"
+                    demo = build_demo(root, papers=name != "empty-library", busy=name.startswith("activity"),
+                                      host="0.0.0.0" if name == "banner" else "127.0.0.1")
+                    context = browser.new_context(viewport={"width": width, "height": height}, color_scheme=mode, device_scale_factor=1)
+                    page = context.new_page()
+                    hosts, errors = set(), []
+                    page.on("request", lambda r: hosts.add(r.url.split("/")[2] if "://" in r.url else r.url[:20]))
+                    page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+                    page.on("pageerror", lambda e: errors.append(str(e)))
+                    try:
+                        page.goto(demo.url)
+                        wait_app(page)
+                        scene(page, demo)
+                        page.wait_for_timeout(300)
+                        overflow = page.evaluate(JS_OVERFLOW)
+                        small = page.evaluate(JS_SMALL_TARGETS, MIN_TARGET)
+                        outside = sorted(h for h in hosts if not h.startswith(("127.0.0.1", "localhost", "data:", "blob:")))
+                        problems = []
+                        if overflow > 0:
+                            problems.append(f"sideways scroll {overflow}px")
+                        if small:
+                            problems.append("small targets: " + "; ".join(small[:6]))
+                        if outside:
+                            problems.append("outside requests: " + ", ".join(outside))
+                        real_errors = [e for e in errors if "favicon" not in e and "manifest" not in e]
+                        if real_errors:
+                            problems.append("console: " + real_errors[0][:120])
+                        page.screenshot(path=str(out / f"{name}-{size_name}-{mode}.png"), full_page=True)
+                        rows.append((name, size_name, mode, "ok" if not problems else "; ".join(problems)))
+                        failures += [f"{name} {size_name} {mode}: {p}" for p in problems]
+                    finally:
+                        context.close()
+                        demo.close()
+        browser.close()
+    for row in rows:
+        print(safe(f"{row[0]:22} {row[1]:8} {row[2]:6} {row[3]}"))
+    print(f"\nImages in {out}")
+    return 1 if failures else 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("out", nargs="?", default=None)
+    parser.add_argument("--only", nargs="*")
+    args = parser.parse_args()
+    out = Path(args.out) if args.out else Path(tempfile.gettempdir()) / "sb-screenshots"
+    return run(out, args.only)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
