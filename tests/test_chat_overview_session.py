@@ -209,6 +209,46 @@ def test_an_answer_that_cites_nothing_carries_the_usual_caution(setup):
     assert final.uncited and any("no source was cited" in n or "wording matches" in n for n in final.notes)
 
 
+# ---- "this" and the age of the documents ----------------------------------------------------------------
+
+def age_all(setup, minutes, title=None):
+    """Pretend every document (or the one titled `title`) was added `minutes` ago."""
+    from datetime import datetime, timedelta, timezone
+    when = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+    if title:
+        setup.index.store._db.execute("UPDATE documents SET created_at = ? WHERE title = ?", (when, title))
+    else:
+        setup.index.store._db.execute("UPDATE documents SET created_at = ?", (when,))
+
+
+def test_this_means_the_latest_upload_only_while_it_is_recent(setup):
+    names = SubjectList(setup.settings.data_dir / "subjects.json", ["Science", "Geography"])
+    final = setup.session(ScriptedClient([["Plates move ", "[1]", "."]]), subjects=names, gate=STRICT).ask("summarize this handout")
+    assert len(final.sources) == 1 and final.mode == OVERVIEW                                       # added a moment ago: one document, the latest
+
+
+def test_this_with_a_few_old_documents_summarises_all_of_them(setup):
+    age_all(setup, 90)
+    final = final_of(run(setup, ScriptedClient([THREE]), "summarize this handout")[1])
+    assert final.mode == OVERVIEW and len(final.sources) == 3                                       # up to 3 papers are each summarised
+
+
+def test_this_with_many_old_documents_asks_which_paper(five):
+    age_all(five, 90)
+    client = ScriptedClient()
+    final = final_of(run(five, client, "summarize this handout")[1])
+    assert final.status == NEEDS_CHOICE and "Which paper do you mean?" in final.text and client.stream_calls == []
+    for question in ("buod ng papel na ito", "ano ang laman nito"):
+        assert final_of(run(five, ScriptedClient(), question)[1]).status == NEEDS_CHOICE, question
+
+
+def test_this_with_many_documents_and_a_recent_one_uses_the_latest(five):
+    age_all(five, 90)
+    age_all(five, 5, "Weather and climate")
+    final = final_of(run(five, ScriptedClient([["Weather is the state of the atmosphere ", "[1]", "."]]), "summarize this handout")[1])
+    assert [s.title for s in final.sources] == ["Weather and climate"]
+
+
 def long_text(n):
     return " ".join(f"Sentence {i} explains idea number {i} about the planet in detail." for i in range(n))
 

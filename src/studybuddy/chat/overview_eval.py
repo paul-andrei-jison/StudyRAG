@@ -1,7 +1,8 @@
 """Measure overview questions end to end on your own pages (files in SB_SAMPLES_DIR, outside the repo).
 
 `questions.json` may hold items `{"question": ..., "kind": "overview", "expect_docs": ["page-stem", ...]}`: whole-document questions
-that must be answered from those pages. `nearmiss.json` holds `{"question": ..., "must": "normal" | "refuse"}`: questions that contain
+that must be answered from those pages. `"expect_docs": "latest"` is for "this / ito / nito" questions: the program answers about the latest upload when it
+arrived within the last hour (`resolve_expectation` works out what that means for the index being tested). `nearmiss.json` holds `{"question": ..., "must": "normal" | "refuse"}`: questions that contain
 document words but are not overview requests ("normal": must stay on the page-search path) or that must be refused. This module only
 loads and judges; `scripts/eval_overview.py` runs the real pipeline.
 """
@@ -13,7 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
-from .answers import ANSWERED, NOT_IN_PAPERS_STATUS, OVERVIEW, SEARCH, ChatAnswer
+from .answers import ANSWERED, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, OVERVIEW, SEARCH, ChatAnswer
+from .targets import FEW_DOCUMENTS, RECENT_MINUTES
 
 OVERVIEW_GROUP, ANSWERABLE_GROUP, UNANSWERABLE_GROUP, NEARMISS_GROUP = "overview", "answerable", "unanswerable", "near-miss"
 
@@ -22,6 +24,8 @@ OVERVIEW_GROUP, ANSWERABLE_GROUP, UNANSWERABLE_GROUP, NEARMISS_GROUP = "overview
 class OverviewCase:
     question: str
     expect_docs: tuple[str, ...]
+    latest: bool = False       # expect_docs depends on the index: see resolve_expectation
+    expect_ask: bool = False   # the student must be asked which paper
 
 
 @dataclass(frozen=True)
@@ -48,8 +52,24 @@ def load_overview_cases(samples_dir: Path) -> list[OverviewCase]:
     for item in items:
         if item.get("kind") == "overview":
             docs = item.get("expect_docs") or []
+            if docs == "latest":
+                cases.append(OverviewCase(item["question"], (), latest=True))
+                continue
             cases.append(OverviewCase(item["question"], tuple(str(d) for d in (docs if isinstance(docs, list) else [docs]))))
     return cases
+
+
+def resolve_expectation(case: OverviewCase, library: Sequence[tuple[str, float]]) -> OverviewCase:
+    """`library` is (page stem, minutes since it was added) for every document. A "latest" case expects the newest document when it is
+    recent enough; otherwise what the program does with the same question: summarise all of up to FEW_DOCUMENTS, or ask which."""
+    if not case.latest:
+        return case
+    newest = min(library, key=lambda d: d[1])
+    if newest[1] <= RECENT_MINUTES:
+        return OverviewCase(case.question, (newest[0],))
+    if len(library) <= FEW_DOCUMENTS:
+        return OverviewCase(case.question, tuple(sorted(stem for stem, _ in library)))
+    return OverviewCase(case.question, (), expect_ask=True)
 
 
 def load_near_misses(samples_dir: Path) -> list[NearMiss]:
@@ -66,6 +86,10 @@ def load_near_misses(samples_dir: Path) -> list[NearMiss]:
 
 
 def judge_overview(case: OverviewCase, answer: ChatAnswer, source_stems: Sequence[str], seconds: float) -> Outcome:
+    if case.expect_ask:
+        ok = answer.status == NEEDS_CHOICE and not answer.sources
+        return Outcome(OVERVIEW_GROUP, case.question, ok, "" if ok else f"should have asked which paper, got {answer.status}",
+                       answer.status, answer.mode, seconds, {"documents": []})
     problems = []
     if answer.status != ANSWERED:
         problems.append(f"status {answer.status}")

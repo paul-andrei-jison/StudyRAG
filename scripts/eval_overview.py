@@ -23,7 +23,7 @@ from studybuddy.chat.calibrate import load_cases  # noqa: E402
 from studybuddy.chat.condense import plan_document  # noqa: E402
 from studybuddy.chat.overview_eval import (  # noqa: E402
     format_report, judge_answerable, judge_near_miss, judge_overview, judge_unanswerable, load_near_misses,
-    load_overview_cases, wrongly_detected)
+    load_overview_cases, resolve_expectation, wrongly_detected)
 from studybuddy.chat.prompt import OVERVIEW_SYSTEM_PROMPT, format_source  # noqa: E402
 from studybuddy.chat.session import ChatConfig, ChatSession  # noqa: E402
 from studybuddy.config import load_settings  # noqa: E402
@@ -107,6 +107,13 @@ def timing(settings, client, real_index, counter):
     return results
 
 
+def stems_of_path(stem_of, path):
+    try:
+        return stem_of.get(hashlib.sha256(Path(path).read_bytes()).hexdigest(), "?")
+    except OSError:
+        return "?"
+
+
 def _source_of(doc, number, text):
     from studybuddy.chat.answers import Source
     return Source(number, doc.subject, doc.title, doc.file_path, number, doc.file_path, text, 0.95, [])
@@ -149,8 +156,15 @@ def main() -> int:
                     found.append("?")
             return found
 
+        library = []
+        for doc in index.documents():
+            page = index.store.pages(doc.id)[0]
+            added = datetime.fromisoformat(doc.created_at)
+            library.append((stems_of_path(stem_of, page["image_path"]), (datetime.now(added.tzinfo) - added).total_seconds() / 60))
+
         outcomes = []
         for case in overview_cases:
+            case = resolve_expectation(case, library)
             client.reset()
             answer, seconds = ask(index, client, settings, subjects, case.question)
             outcome = judge_overview(case, answer, stems(answer), seconds)

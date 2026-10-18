@@ -2,11 +2,11 @@ import json
 
 import pytest
 
-from studybuddy.chat.answers import ANSWERED, NOT_IN_PAPERS_STATUS, OVERVIEW, SEARCH, ChatAnswer
+from studybuddy.chat.answers import ANSWERED, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, OVERVIEW, SEARCH, ChatAnswer
 from studybuddy.chat.calibrate import load_cases
 from studybuddy.chat.overview_eval import (NearMiss, OverviewCase, format_report, judge_answerable, judge_near_miss,
                                            judge_overview, judge_unanswerable, load_near_misses, load_overview_cases,
-                                           tally, wrongly_detected)
+                                           resolve_expectation, tally, wrongly_detected)
 from studybuddy.index.prefix_compare import load_questions
 
 
@@ -82,3 +82,25 @@ def test_the_report_counts_groups_and_wrong_detections():
     assert wrongly_detected(outcomes) == 1                                               # the overview case itself does not count
     report = format_report(outcomes)
     assert "answerable    1/2" in report and "wrongly detected as overview (not an overview question): 1" in report and "<-- wrongly" in report
+
+
+def test_this_questions_expect_the_latest_upload_when_it_is_recent_and_otherwise_what_the_program_does(tmp_path):
+    (tmp_path / "questions.json").write_text(json.dumps([{"question": "summarize this handout", "kind": "overview", "expect_docs": "latest"}]),
+                                             encoding="utf-8")
+    case = load_overview_cases(tmp_path)[0]
+    assert case == OverviewCase("summarize this handout", (), latest=True)
+    recent = resolve_expectation(case, [("a", 300.0), ("b", 12.0), ("c", 500.0)])
+    assert recent.expect_docs == ("b",) and not recent.expect_ask                                  # the upload of 12 minutes ago
+    old3 = resolve_expectation(case, [("c", 300.0), ("a", 120.0), ("b", 500.0)])
+    assert old3.expect_docs == ("a", "b", "c")                                                      # nothing recent: up to 3 are all summarised
+    old5 = resolve_expectation(case, [(k, 100.0 + i) for i, k in enumerate("abcde")])
+    assert old5.expect_ask and old5.expect_docs == ()                                               # more than 3: the student is asked
+    fixed = OverviewCase("q", ("a",))
+    assert resolve_expectation(fixed, [("a", 1.0)]) is fixed
+
+
+def test_an_ask_expectation_passes_only_when_the_student_is_asked_which_paper():
+    case = OverviewCase("q", (), expect_ask=True)
+    assert judge_overview(case, answer(status=NEEDS_CHOICE, mode=OVERVIEW), [], 1.0).ok
+    wrong = judge_overview(case, answer(mode=OVERVIEW, cited=[1]), ["a"], 1.0)
+    assert not wrong.ok and "should have asked which paper" in wrong.why
