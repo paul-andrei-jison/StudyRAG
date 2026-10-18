@@ -4,7 +4,7 @@ import re
 import pytest
 
 from studybuddy.chat.budget import TokenEstimator
-from studybuddy.chat.condense import condense_group, split_sections
+from studybuddy.chat.condense import condense_group, plan_groups, split_sections
 from studybuddy.errors import LLMError, TransientLLMError
 
 EST = TokenEstimator()
@@ -36,6 +36,15 @@ def by_page(messages):
 
 def pages(*numbers):
     return [(n, f"Page {n}. " + PAGE) for n in numbers]
+
+
+def test_groups_have_at_most_four_pages_and_never_more_than_half_the_context():
+    assert plan_groups([500] * 14, 40000) == [range(0, 4), range(4, 8), range(8, 12), range(12, 14)]
+    assert plan_groups([4000] * 6, 40000) == [range(0, 4), range(4, 6)]
+    assert plan_groups([6000] * 5, 40000) == [range(0, 3), range(3, 5)]               # 3 x 6,000 = 18,000 fit in 20,000, a 4th would not
+    assert plan_groups([30000, 100, 100], 40000) == [range(0, 1), range(1, 3)]       # a page over the share goes alone
+    assert plan_groups([10000] * 3, 40000) == [range(0, 2), range(2, 3)]
+    assert plan_groups([], 40000) == []
 
 
 def test_sections_are_split_by_their_labels():

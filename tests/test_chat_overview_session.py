@@ -259,13 +259,13 @@ def long_text(n):
     return " ".join(f"Sentence {i} explains idea number {i} about the planet in detail." for i in range(n))
 
 
-def condensing(settings, tmp_path, page_count, unsplittable=False):
+def condensing(settings, tmp_path, page_count, sentences=30, context=6000, unsplittable=False):
     """Ask for an overview of a long reviewer; returns (progress texts, final answer, client)."""
     setup = make_setup(settings, tmp_path)
     try:
-        add_doc(setup.index, "long", "", subject="Math", title="Long reviewer", pages=[long_text(60) for _ in range(page_count)])
+        add_doc(setup.index, "long", "", subject="Math", title="Long reviewer", pages=[long_text(sentences) for _ in range(page_count)])
         names = SubjectList(setup.settings.data_dir / "subjects.json", ["Science", "Math"])
-        client = Spy([["Short points ", "[1]", " and ", "[4]", "."]], context=2400 if page_count <= 4 else 6000)
+        client = Spy([["Short points ", "[1]", " and ", "[4]", "."]], context=context)
         client.unsplittable = unsplittable
         session = setup.session(client, subjects=names, gate=STRICT)
         session.set_subject("Math")
@@ -275,24 +275,30 @@ def condensing(settings, tmp_path, page_count, unsplittable=False):
         setup.index.close()
 
 
-def test_a_long_document_is_condensed_several_pages_per_call_and_the_student_is_told(settings, tmp_path):
-    progress, final, client = condensing(settings, tmp_path, 4)
-    assert progress == ["Summarizing pages 1-4 of 4 of 'Long reviewer' first..."]
-    assert final.model_calls_condensing == 1 and len(client.chat_calls) == 1                  # four pages, one call
-    assert [s.page_number for s in final.sources] == [1, 2, 3, 4]
-    assert [s.text for s in final.sources] == [f"points of page {n}" for n in (1, 2, 3, 4)]   # every page keeps its own text
+def test_a_long_document_is_condensed_four_pages_per_call_and_the_student_is_told(settings, tmp_path):
+    progress, final, client = condensing(settings, tmp_path, 12)
+    assert progress == [f"Summarizing pages {a}-{a + 3} of 12 of 'Long reviewer' first..." for a in (1, 5, 9)]
+    assert final.model_calls_condensing == 3 and len(client.chat_calls) == 3                  # twelve pages, three calls
+    assert [s.page_number for s in final.sources] == list(range(1, 13))
+    assert [s.text for s in final.sources] == [f"points of page {n}" for n in range(1, 13)]   # every page keeps its own text
     assert any("summarized each page first" in n for n in final.notes) and final.cited == [1, 4]
 
 
-def test_more_pages_than_a_group_are_condensed_in_groups_of_four(settings, tmp_path):
-    progress, final, client = condensing(settings, tmp_path, 6)
-    assert progress == ["Summarizing pages 1-4 of 6 of 'Long reviewer' first...", "Summarizing pages 5-6 of 6 of 'Long reviewer' first..."]
-    assert final.model_calls_condensing == 2 and [s.text for s in final.sources] == [f"points of page {n}" for n in range(1, 7)]
+def test_big_pages_make_smaller_groups_so_a_group_never_overflows_the_context(settings, tmp_path):
+    progress, final, client = condensing(settings, tmp_path, 6, sentences=60)               # about 1,200 tokens a page, 3,000 allowed a group
+    assert progress == [f"Summarizing pages {a}-{a + 1} of 6 of 'Long reviewer' first..." for a in (1, 3, 5)]
+    assert final.model_calls_condensing == 3 and [s.text for s in final.sources] == [f"points of page {n}" for n in range(1, 7)]
+
+
+def test_a_page_too_big_to_share_a_call_is_condensed_alone(settings, tmp_path):
+    progress, final, client = condensing(settings, tmp_path, 4, sentences=60, context=2400)
+    assert progress == [f"Summarizing page {n} of 4 of 'Long reviewer' first..." for n in range(1, 5)]
+    assert final.model_calls_condensing == 4 and all(s.text == "short points" for s in final.sources)
 
 
 def test_a_reply_that_cannot_be_split_is_redone_one_page_per_call_and_every_page_is_still_there(settings, tmp_path):
-    progress, final, client = condensing(settings, tmp_path, 4, unsplittable=True)
-    assert final.model_calls_condensing == 5 and [s.page_number for s in final.sources] == [1, 2, 3, 4]    # 1 group call + 4 single
+    progress, final, client = condensing(settings, tmp_path, 12, unsplittable=True)
+    assert final.model_calls_condensing == 15 and [s.page_number for s in final.sources] == list(range(1, 13))   # 3 x (1 group + 4 single)
     assert all(s.text == "short points" for s in final.sources) and final.status == ANSWERED
 
 

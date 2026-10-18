@@ -22,7 +22,7 @@ from ..ingest.subjects import SubjectError, SubjectList
 from ..llm import StreamEnd
 from .answers import ANSWERED, ERROR, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, OVERVIEW, ChatAnswer, Progress, Source
 from .budget import TokenEstimator, minimum_context, plan_budget, resolve_context_tokens, too_small
-from .condense import CONDENSED, GROUP_PAGES, SUMMARY, condense_group, plan_document
+from .condense import CONDENSED, SUMMARY, condense_group, plan_document, plan_groups
 from .citations import CitationFilter
 from .expand import expand_query, fuse_searches
 from .gate import GateConfig, assess, coverage
@@ -257,8 +257,8 @@ class ChatSession:
                 answer.overview_notes.append(
                     f"'{doc.title}' has {len(drafts)} pages, so I summarized each page first, then combined them; fine details may be missing.")
                 fallbacks = 0
-                for start in range(0, len(drafts), GROUP_PAGES):
-                    group = drafts[start:start + GROUP_PAGES]
+                for span in plan_groups([self.estimator.estimate(d.text) for d in drafts], context):
+                    start, group = span.start, drafts[span.start:span.stop]
                     first, last = start + 1, start + len(group)
                     yield Progress(f"Summarizing page {first} of {len(drafts)} of '{doc.title}' first..." if first == last else
                                    f"Summarizing pages {first}-{last} of {len(drafts)} of '{doc.title}' first...")

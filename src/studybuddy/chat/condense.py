@@ -23,7 +23,8 @@ from .budget import TokenEstimator
 FULL, CONDENSED, SUMMARY = "full", "condensed", "summary"
 MAX_CONDENSE_PAGES = 30
 GROUP_PAGES = 4                  # pages condensed per model call; a group whose reply cannot be split cleanly is redone one page per call
-CONDENSED_PAGE_CHARS_MAX = 800   # key points need no more; measured: 2,800-character pages took 22 s a call, so a 14-page document took 5.6 minutes
+GROUP_CONTEXT_SHARE = 0.5        # the pages of one group may fill at most this share of the context (the rest: instructions and the reply)
+CONDENSED_PAGE_CHARS_MAX = 800  # key points need no more; measured: 2,800-character pages took 22 s a call, so a 14-page document took 5.6 minutes
 MIN_PAGE_TOKENS = 150          # below this a condensed page says too little to be worth citing
 HEADING_TOKENS = 40            # "SOURCE n - Subject | Title | file, page p" and separators, per source
 CONDENSE_TOKENS_FLOOR = 40
@@ -115,6 +116,21 @@ def split_sections(raw: str, numbers: Sequence[int]) -> dict[int, str] | None:
             return None
         out[int(mark.group(1))] = body
     return out
+
+
+def plan_groups(page_tokens: Sequence[int], context: int) -> list[range]:
+    """Consecutive pages per model call: at most GROUP_PAGES, and together at most GROUP_CONTEXT_SHARE of the context, so a group prompt
+    can never overflow it. A page that alone exceeds the share goes by itself."""
+    cap = int(context * GROUP_CONTEXT_SHARE)
+    groups, start, used = [], 0, 0
+    for i, tokens in enumerate(page_tokens):
+        if i > start and (i - start >= GROUP_PAGES or used + tokens > cap):
+            groups.append(range(start, i))
+            start, used = i, 0
+        used += tokens
+    if page_tokens:
+        groups.append(range(start, len(page_tokens)))
+    return groups
 
 
 @dataclass
