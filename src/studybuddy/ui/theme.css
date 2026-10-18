@@ -211,7 +211,8 @@ main.app { padding: 0 !important; }
   box-shadow: none !important;
   color: var(--ink) !important;
 }
-#sb-chat .user-row .message { background: var(--sunk) !important; border-radius: var(--r-lg) !important; padding: 10px 16px !important; }
+#sb-chat .user-row .flex-wrap { display: flex; justify-content: flex-end; }
+#sb-chat .user-row .message { width: fit-content !important; background: var(--sunk) !important; border-radius: var(--r-lg) !important; padding: 10px 16px !important; }
 #sb-chat .bot-row .message { background: transparent !important; padding: 2px 0 !important; }
 #sb-chat .message :where(blockquote) { border-left: 3px solid var(--accent); margin: 10px 0; padding: 2px 0 2px 14px; color: var(--muted); }
 #sb-chat .icon-button-wrapper { display: none !important; }
@@ -244,23 +245,48 @@ main.app { padding: 0 !important; }
 /* the question box */
 #sb-composer { background: var(--surface) !important; border: 1px solid var(--line-strong) !important; border-radius: var(--r-lg) !important; padding: 8px 8px 8px 16px; box-shadow: none !important; overflow: visible !important; }
 #sb-composer > .styler, #sb-composer .styler { display: flex !important; flex-direction: row !important; align-items: flex-end; gap: 8px; background: transparent !important; border: 0 !important; padding: 0 !important; }
+#sb-question { flex: 1 1 0 !important; }
 #sb-composer .block { flex: 1 1 auto; min-width: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
 #sb-composer textarea { border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 10px 0 !important; min-height: 44px; font-size: var(--text-answer); }
 #sb-composer:focus-within { border-color: var(--accent-text) !important; }
 #sb-send { flex: 0 0 auto; min-width: 88px; }
 
 #sb-ask-tools { display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; }
-#sb-subject { flex: 0 1 220px !important; min-width: 140px; border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+#sb-subject { flex: 0 1 220px !important; min-width: 140px; margin: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
 #sb-subject .wrap, #sb-subject input { background: var(--surface); border-radius: var(--r-pill); min-height: 44px; font-size: var(--text-small); }
 #sb-subject .wrap { border: 1px solid var(--line-strong) !important; padding-left: 8px; box-shadow: none !important; }
 #sb-subject input { border: 0 !important; box-shadow: none !important; }
-#sb-new { flex: 0 0 auto; min-width: 0 !important; border-radius: var(--r-pill) !important; font-size: var(--text-small) !important; padding: 0 16px !important; }
+#sb-new { margin-left: auto !important; flex: 0 0 auto; min-width: 0 !important; border-radius: var(--r-pill) !important; font-size: var(--text-small) !important; padding: 0 16px !important; }
 
 /* example questions */
 #sb-examples { gap: 10px; background: transparent !important; border: 0 !important; }
 #sb-root #sb-examples button.sb-example { justify-content: flex-start; text-align: left; border-radius: var(--r-lg); padding: 10px 16px; min-height: 44px; height: auto; font-weight: 400; }
 #sb-examples-note p { margin: 0; text-align: center; }
 #sb-add-first { align-self: center; }
+
+/* ---- the paper slip: the one decorative object, laid next to the answer ---------------------------------------------- */
+#sb-slip {
+  background: var(--surface) !important;
+  border: 1px solid var(--line) !important;
+  border-top: 3px solid var(--accent) !important;
+  border-radius: var(--r-sm) var(--r-sm) var(--r-lg) var(--r-lg) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 12px 14px 8px;
+  overflow: visible !important;
+  animation: sb-slip-in 160ms ease-out;
+}
+#sb-slip .styler, #sb-slip > div { background: transparent !important; border: 0 !important; box-shadow: none !important; gap: 8px; }
+#sb-slip .block { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+#sb-slip-image img { max-height: 68vh; width: 100%; object-fit: contain; border-radius: var(--r-sm); background: var(--sunk); }
+.sb-slip-caption p { margin: 4px 0 0; max-width: none; font-size: var(--text-small); }
+.sb-slip-caption .sb-slip-file { font-size: var(--text-body); overflow-wrap: anywhere; }
+.sb-note { background: var(--warn-bg); color: var(--warn); border-radius: var(--r-md); padding: 8px 12px; margin-top: 8px !important; }
+#sb-slip-text { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+#sb-slip-text .label-wrap { min-height: 44px; font-size: var(--text-small); color: var(--muted); padding-left: 0; }
+@keyframes sb-slip-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+@media (min-width: 900px) {
+  #sb-slip { transform: rotate(-0.4deg); transform-origin: top center; }
+}
 
 /* ---- phone ------------------------------------------------------------------------------------------------------- */
 @media (max-width: 640px) {
