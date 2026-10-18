@@ -21,22 +21,27 @@ from .files import LibraryGuard
 
 log = logging.getLogger(__name__)
 
-WAKE_AFTER_SECONDS = 3.0
+SEARCH_AFTER_SECONDS = 1.0     # nothing yet: say we are working
+WAKE_AFTER_SECONDS = 8.0       # still nothing: a warm question starts answering in about 5 s, so this is the model loading
 POLL_SECONDS = 0.25
-WAKING, STREAMING, DONE, FAILED = "waking", "streaming", "done", "error"
+SEARCHING, WAKING, STREAMING, DONE, FAILED = "searching", "waking", "streaming", "done", "error"
 _END = object()
 
 
 @dataclass
 class TurnUpdate:
     text: str                       # what the assistant message shows right now
-    phase: str                      # waking | streaming | done | error
+    phase: str                      # searching | waking | streaming | done | error
     answer: ChatAnswer | None = None   # only on the last update of a successful turn
     elapsed: float = 0.0
 
 
 def waking_text(elapsed: float) -> str:
     return f"_Waking the model, this can take a minute... ({int(elapsed)} s)_"
+
+
+def searching_text(elapsed: float) -> str:
+    return f"_Searching your papers... ({int(elapsed)} s)_"
 
 
 def friendly_error(exc: BaseException) -> str:
@@ -58,7 +63,7 @@ def friendly_error(exc: BaseException) -> str:
 
 
 def stream_turn(session: ChatSession, question: str, subject: str | None, *, wake_after: float = WAKE_AFTER_SECONDS,
-                poll: float = POLL_SECONDS, clock=time.monotonic) -> Iterator[TurnUpdate]:
+                search_after: float = SEARCH_AFTER_SECONDS, poll: float = POLL_SECONDS, clock=time.monotonic) -> Iterator[TurnUpdate]:
     """Ask one question; yield display updates until the last (phase `done` or `error`).
 
     The subject filter is applied to the session first (an unknown subject is reported, not guessed)."""
@@ -89,6 +94,8 @@ def stream_turn(session: ChatSession, question: str, subject: str | None, *, wak
             elapsed = clock() - started
             if not shown and elapsed >= wake_after:
                 yield TurnUpdate(waking_text(elapsed), WAKING, elapsed=elapsed)
+            elif not shown and elapsed >= search_after:
+                yield TurnUpdate(searching_text(elapsed), SEARCHING, elapsed=elapsed)
             continue
         elapsed = clock() - started
         if item is _END:

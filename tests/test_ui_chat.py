@@ -8,7 +8,7 @@ from studybuddy.chat.answers import ANSWERED, NOT_IN_PAPERS_STATUS
 from studybuddy.chat.gate import GateConfig
 from studybuddy.errors import ChatContextError, IndexMismatchError, TransientLLMError
 from studybuddy.ingest.subjects import SubjectList
-from studybuddy.ui.chat import (DONE, FAILED, STREAMING, WAKING, friendly_error, render_answer, source_choices,
+from studybuddy.ui.chat import (DONE, FAILED, SEARCHING, STREAMING, WAKING, friendly_error, render_answer, source_choices,
                                 source_details, sources_caption, stream_turn)
 from studybuddy.ui.files import LibraryGuard
 
@@ -58,10 +58,11 @@ def test_the_waking_state_shows_while_nothing_has_arrived_and_goes_away(setup):
 
     session = setup.session(Slow([GOOD]))
     seen = []
-    for update in stream_turn(session, QUESTION, None, wake_after=0.05, poll=0.02):
+    for update in stream_turn(session, QUESTION, None, wake_after=0.15, search_after=0.03, poll=0.02):
         seen.append(update)
         if update.phase == WAKING and not release.is_set():
             release.set()
+    assert seen[0].phase == SEARCHING and "Searching your papers" in seen[0].text   # a warm model is not accused of sleeping
     waking = [u for u in seen if u.phase == WAKING]
     assert waking and "Waking the model, this can take a minute" in waking[0].text
     assert seen[-1].phase == DONE and "Waking" not in seen[-1].text
@@ -69,8 +70,8 @@ def test_the_waking_state_shows_while_nothing_has_arrived_and_goes_away(setup):
 
 
 def test_a_fast_answer_never_shows_the_waking_state(setup):
-    _, updates = run(setup, ScriptedClient([GOOD]), wake_after=30.0)
-    assert WAKING not in {u.phase for u in updates}
+    _, updates = run(setup, ScriptedClient([GOOD]), wake_after=30.0, search_after=30.0)
+    assert {u.phase for u in updates} <= {STREAMING, DONE}
 
 
 def test_a_refusal_is_shown_as_not_in_your_papers_with_the_closest_pages(setup):
