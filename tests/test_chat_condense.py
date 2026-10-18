@@ -1,7 +1,7 @@
 import pytest
 
 from studybuddy.chat.budget import TokenEstimator
-from studybuddy.chat.condense import (CONDENSED, FULL, MAX_CONDENSE_PAGES, MIN_PAGE_TOKENS, SUMMARY, condense_page,
+from studybuddy.chat.condense import (CONDENSED, FULL, CONDENSED_PAGE_CHARS_MAX, MAX_CONDENSE_PAGES, MIN_PAGE_TOKENS, SUMMARY, condense_page,
                                       plan_document)
 from studybuddy.errors import LLMError, TransientLLMError
 
@@ -27,9 +27,10 @@ def test_everything_that_fits_is_used_as_it_is():
 
 
 def test_a_document_that_is_too_long_is_condensed_page_by_page_to_its_share():
-    plan = plan_document(3000, [1200] * 5, EST)                               # 600 tokens per page
-    assert plan.tier == CONDENSED and plan.page_chars == EST.chars_for(600 - 40)
-    assert plan_document(3000, [1200] * 5, EST).page_chars >= 200
+    plan = plan_document(3000, [1200] * 5, EST)                               # 600 tokens per page, but key points need fewer characters
+    assert plan.tier == CONDENSED and plan.page_chars == CONDENSED_PAGE_CHARS_MAX
+    tight = plan_document(1000, [1200] * 5, EST)                              # 200 tokens per page: the share is the limit
+    assert tight.tier == CONDENSED and 200 <= tight.page_chars == EST.chars_for(200 - 40) < CONDENSED_PAGE_CHARS_MAX
 
 
 def test_a_page_share_below_the_minimum_falls_back_to_the_stored_summary():

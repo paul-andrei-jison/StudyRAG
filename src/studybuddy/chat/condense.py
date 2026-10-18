@@ -21,6 +21,7 @@ from .budget import TokenEstimator
 
 FULL, CONDENSED, SUMMARY = "full", "condensed", "summary"
 MAX_CONDENSE_PAGES = 30
+CONDENSED_PAGE_CHARS_MAX = 800   # key points need no more; measured: 2,800-character pages took 22 s a call, so a 14-page document took 5.6 minutes
 MIN_PAGE_TOKENS = 150          # below this a condensed page says too little to be worth citing
 HEADING_TOKENS = 40            # "SOURCE n - Subject | Title | file, page p" and separators, per source
 CONDENSE_TOKENS_FLOOR = 40
@@ -46,7 +47,7 @@ def plan_document(share_tokens: int, page_tokens: Sequence[int], estimator: Toke
     pages = len(page_tokens)
     per_page = share_tokens // pages if pages else 0
     if pages <= MAX_CONDENSE_PAGES and per_page >= MIN_PAGE_TOKENS:
-        return DocPlan(CONDENSED, max(200, estimator.chars_for(per_page - HEADING_TOKENS)))
+        return DocPlan(CONDENSED, min(CONDENSED_PAGE_CHARS_MAX, max(200, estimator.chars_for(per_page - HEADING_TOKENS))))
     return DocPlan(SUMMARY)
 
 
