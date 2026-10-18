@@ -62,9 +62,9 @@ def test_the_waking_state_shows_while_nothing_has_arrived_and_goes_away(setup):
         seen.append(update)
         if update.phase == WAKING and not release.is_set():
             release.set()
-    assert seen[0].phase == SEARCHING and "Searching your papers" in seen[0].text   # a warm model is not accused of sleeping
+    assert seen[0].phase == SEARCHING and "Looking through your papers" in seen[0].text   # a warm model is not accused of sleeping
     waking = [u for u in seen if u.phase == WAKING]
-    assert waking and "Waking the model, this can take a minute" in waking[0].text
+    assert waking and "Waking up the model. This can take a minute" in waking[0].text
     assert seen[-1].phase == DONE and "Waking" not in seen[-1].text
     assert all(u.phase != WAKING for u in seen[seen.index(waking[-1]) + 1:])  # no waking text once the answer flows
 
@@ -80,8 +80,8 @@ def test_a_refusal_is_shown_as_not_in_your_papers_with_the_closest_pages(setup):
     answer = updates[-1].answer
     assert answer.status == NOT_IN_PAPERS_STATUS
     text = updates[-1].text
-    assert text.startswith("**Not in your papers.**") and "probably not relevant" in text and "Why:" in text
-    assert sources_caption(answer).startswith("Closest pages (probably not relevant)")
+    assert text == "I couldn't find that in your papers."
+    assert sources_caption(answer).startswith("Closest pages")
     assert all(not s.cited for s in answer.sources)
 
 
@@ -95,7 +95,8 @@ def test_quality_notes_are_a_separate_callout_and_the_cited_page_is_marked(setup
     assert "> **Check this:** page 1 of 'Blurry plates' was hard to read" in text
     assert text.index("Plates move over the mantle") < text.index("Check this")
     labels = [label for label, _ in source_choices(answer)]
-    assert labels[0].startswith("[1]") and "cited" in labels[0] and "hard to read" in labels[0]
+    assert labels[0].startswith("1  Blurry plates, p. 1")
+    assert [s.cited for s in answer.sources][0] is True
 
 
 def test_cited_sources_are_listed_first(setup):
@@ -124,7 +125,7 @@ def test_new_chat_forgets_the_conversation_but_keeps_the_filter(setup):
     (ChatContextError("the loaded context is 1100 tokens"), "the loaded context is 1100 tokens"),
     (IndexMismatchError("embedding model changed"), "index_admin.py reindex"),
     (ValueError("The question is empty."), "The question is empty."),
-    (RuntimeError("boom"), "Something went wrong (RuntimeError: boom)"),
+    (RuntimeError("boom"), "Something went wrong while answering"),
 ])
 def test_errors_become_plain_messages_without_tracebacks(setup, error, expected):
     _, updates = run(setup, ScriptedClient([error]))
@@ -136,7 +137,7 @@ def test_an_error_after_some_text_keeps_the_partial_answer_with_a_warning(setup)
     pieces = ["Molten iron moves ", TransientLLMError("connection dropped")]
     _, updates = run(setup, ScriptedClient([pieces]))
     answer = updates[-1].answer
-    assert answer.truncated and "Incomplete" in updates[-1].text and "connection dropped" in updates[-1].text
+    assert answer.truncated and "cut short" in updates[-1].text and "connection dropped" in updates[-1].text
 
 
 def test_source_details_open_the_page_image_with_file_and_page(setup, tmp_path):
@@ -151,7 +152,7 @@ def test_source_details_open_the_page_image_with_file_and_page(setup, tmp_path):
     guard = LibraryGuard(tmp_path / "lib")
     image, info, page_text = source_details(answer, number, guard)
     assert image is not None and image.size == (300, 400)
-    assert f"File: {photo}" in info and "Page: 1" in info and "was cited" in info
+    assert "<strong>earth.jpg</strong>, page 1" in info and "Used in the answer." in info and "hard to read" not in info
     assert "molten rock" in page_text
 
 
@@ -159,7 +160,7 @@ def test_source_details_explain_a_missing_or_foreign_image_instead_of_failing(se
     _, updates = run(setup, ScriptedClient([GOOD]))
     answer = updates[-1].answer
     image, info, _ = source_details(answer, 1, LibraryGuard(tmp_path / "lib"))  # the fixture path C:/lib/... is not in this library
-    assert image is None and "Page image not shown" in info and "File: " in info
+    assert image is None and "The page image is not available" in info and "page 1" in info
     assert source_details(answer, 99, LibraryGuard(tmp_path / "lib"))[0] is None
 
 
@@ -202,5 +203,6 @@ def test_which_paper_is_shown_as_plain_text_with_no_sources(setup):
     updates = list(stream_turn(session, "give me a summary of the entire paper", None))
     final = updates[-1]
     assert final.phase == DONE and final.answer.status == "needs_choice"
-    assert final.text.startswith("Which paper do you mean?") and "About weather" in final.text
-    assert source_choices(final.answer) == [] and sources_caption(final.answer) == "No sources."
+    assert final.text == "Which paper do you mean?" and "About weather" in final.answer.choices
+    assert final.answer.choices == [t for t in final.answer.choices if t] and len(final.answer.choices) >= 2
+    assert source_choices(final.answer) == [] and sources_caption(final.answer) == ""

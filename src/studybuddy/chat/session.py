@@ -228,7 +228,7 @@ class ChatSession:
 
     def _ask_which(self, question: str, asking: Resolution, started: float, context: int) -> Iterator[str | ChatAnswer]:
         answer = ChatAnswer(text=asking.text, status=NEEDS_CHOICE, query=question, subject_filter=self._subject,
-                            context_tokens=context, mode=OVERVIEW)
+                            context_tokens=context, mode=OVERVIEW, choices=[d.title or d.file_path for d in asking.shown])
         answer.total_seconds = round(self.clock() - started, 2)
         self.last_answer = answer
         yield asking.text

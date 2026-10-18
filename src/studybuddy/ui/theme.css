@@ -59,15 +59,6 @@
   color-scheme: dark;
 }
 
-/* before the script has run (or with scripts off), follow the system */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --bg: #1F1E1B; --surface: #2A2926; --sunk: #262522; --ink: #F2F0E8; --muted: #B5B2A6; --line: #3D3B36; --line-strong: #7B7970;
-    --accent: #E08A6B; --accent-text: #E08A6B; --accent-fill: #B4492A; --accent-fill-hover: #9A3D22;
-    --warn: #E8B96A; --warn-bg: #3A2F1A; --danger: #F0907F; color-scheme: dark;
-  }
-}
-
 /* ---- base -------------------------------------------------------------------------------------------------------- */
 html, body, gradio-app, .gradio-container {
   background: var(--bg) !important;
@@ -77,6 +68,7 @@ html, body, gradio-app, .gradio-container {
   line-height: 1.55;
 }
 .gradio-container { max-width: none !important; padding: 0 !important; }
+main.app { padding: 0 !important; }
 .gradio-container footer, gradio-app footer { display: none !important; }
 #sb-root {
   max-width: 1120px;
@@ -178,10 +170,109 @@ html, body, gradio-app, .gradio-container {
 }
 #sb-root .sb-warning * { color: inherit; }
 
+/* ---- Ask ---------------------------------------------------------------------------------------------------------- */
+#sb-ask {
+  display: grid !important;
+  grid-template-columns: minmax(0, 720px) auto;
+  grid-template-areas: "hello hello" "convo slip" "composer slip" "tools slip" "examples slip";
+  justify-content: center;
+  align-items: start;
+  column-gap: 32px;
+  row-gap: 14px;
+}
+#sb-hello { grid-area: hello; }
+#sb-convo { grid-area: convo; gap: 12px; }
+#sb-slip-col { grid-area: slip; width: 400px; max-width: 100%; position: sticky; top: 16px; }
+#sb-composer { grid-area: composer; }
+#sb-ask-tools { grid-area: tools; }
+#sb-examples { grid-area: examples; }
+/* nothing asked yet: everything sits in one centred column */
+#sb-ask:has(#sb-convo.hidden), #sb-ask:not(:has(#sb-convo)) {
+  grid-template-columns: minmax(0, 720px);
+  grid-template-areas: "hello" "composer" "tools" "examples";
+}
+#sb-ask:not(:has(#sb-convo)) #sb-hello { padding: 40px 0 8px; }
+
+.sb-hello { text-align: center; }
+.sb-hello h1 { font-size: var(--text-hello); margin: 0; }
+.sb-hello p { margin: 6px auto 0; max-width: none; font-size: var(--text-answer); color: var(--muted); }
+
+/* the conversation: no frame, like a chat app */
+#sb-chat { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+#sb-chat .bubble-wrap, #sb-chat .message-wrap { background: transparent !important; padding: 0 !important; }
+#sb-chat .message-row { margin: 0 0 14px !important; padding: 0 !important; }
+#sb-chat .message-row, #sb-chat .flex-wrap { max-width: 100% !important; width: 100%; }
+#sb-chat .message {
+  width: auto !important;
+  max-width: min(68ch, 100%) !important;
+  font-size: var(--text-answer);
+  line-height: 1.6;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+}
+#sb-chat .user-row .message { background: var(--sunk) !important; border-radius: var(--r-lg) !important; padding: 10px 16px !important; }
+#sb-chat .bot-row .message { background: transparent !important; padding: 2px 0 !important; }
+#sb-chat .message :where(blockquote) { border-left: 3px solid var(--accent); margin: 10px 0; padding: 2px 0 2px 14px; color: var(--muted); }
+#sb-chat .icon-button-wrapper { display: none !important; }
+#sb-convo .form, #sb-ask .form { background: transparent !important; border: 0 !important; box-shadow: none !important; }
+
+/* sources: small numbered chips; the radio itself is hidden but stays keyboard-reachable */
+#sb-chips, #sb-which { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+#sb-chips legend, #sb-chips > span, #sb-which > span { color: var(--muted); font-size: var(--text-caption); }
+#sb-chips .wrap, #sb-which .wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+#sb-chips label, #sb-which label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  background: var(--sunk);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+#sb-chips label:hover, #sb-which label:hover { background: var(--surface); }
+#sb-chips label input, #sb-which label input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+#sb-chips label:has(input:checked) { background: var(--surface); border-color: var(--accent-text); color: var(--accent-text); font-weight: 500; }
+#sb-chips label:has(input:focus-visible), #sb-which label:has(input:focus-visible) { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+#sb-which label { border-radius: var(--r-md); background: var(--surface); }
+#sb-closest { align-self: flex-start; background: transparent !important; border: 0 !important; color: var(--accent-text) !important; text-decoration: underline; text-underline-offset: 3px; padding: 0 4px !important; min-width: 0 !important; width: auto !important; }
+
+/* the question box */
+#sb-composer { background: var(--surface) !important; border: 1px solid var(--line-strong) !important; border-radius: var(--r-lg) !important; padding: 8px 8px 8px 16px; box-shadow: none !important; overflow: visible !important; }
+#sb-composer > .styler, #sb-composer .styler { display: flex !important; flex-direction: row !important; align-items: flex-end; gap: 8px; background: transparent !important; border: 0 !important; padding: 0 !important; }
+#sb-composer .block { flex: 1 1 auto; min-width: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+#sb-composer textarea { border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 10px 0 !important; min-height: 44px; font-size: var(--text-answer); }
+#sb-composer:focus-within { border-color: var(--accent-text) !important; }
+#sb-send { flex: 0 0 auto; min-width: 88px; }
+
+#sb-ask-tools { display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; }
+#sb-subject { flex: 0 1 220px !important; min-width: 140px; border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+#sb-subject .wrap, #sb-subject input { background: var(--surface); border-radius: var(--r-pill); min-height: 44px; font-size: var(--text-small); }
+#sb-subject .wrap { border: 1px solid var(--line-strong) !important; padding-left: 8px; box-shadow: none !important; }
+#sb-subject input { border: 0 !important; box-shadow: none !important; }
+#sb-new { flex: 0 0 auto; min-width: 0 !important; border-radius: var(--r-pill) !important; font-size: var(--text-small) !important; padding: 0 16px !important; }
+
+/* example questions */
+#sb-examples { gap: 10px; background: transparent !important; border: 0 !important; }
+#sb-root #sb-examples button.sb-example { justify-content: flex-start; text-align: left; border-radius: var(--r-lg); padding: 10px 16px; min-height: 44px; height: auto; font-weight: 400; }
+#sb-examples-note p { margin: 0; text-align: center; }
+#sb-add-first { align-self: center; }
+
 /* ---- phone ------------------------------------------------------------------------------------------------------- */
 @media (max-width: 640px) {
-  :root { --gutter: 16px; --text-hello: 1.625rem; }
+  #sb-root { --gutter: 16px; --text-hello: 1.625rem; }   /* not :root: Gradio scopes rules inside @media, which breaks :root */
   #sb-header { padding-top: 14px; }
+  #sb-root #sb-ask, #sb-root #sb-ask:has(#sb-convo) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "hello" "convo" "slip" "composer" "tools" "examples";
+  }
+  #sb-slip-col { width: 100%; position: static; }
+  #sb-composer { position: sticky; bottom: 8px; z-index: 5; }
+  #sb-root #sb-examples button.sb-example { width: 100%; }
 }
 
 /* ---- motion: only where something changes; none if the person asked for none ------------------------------------------ */

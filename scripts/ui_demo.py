@@ -67,7 +67,9 @@ class DemoClient(ScriptedClient):
 
     def chat_stream(self, messages, temperature=0.0, max_tokens=None):
         question = messages[-1]["content"].lower()
-        if "magnet" in question or "core" in question or "layer" in question:
+        if "water" in question or "evaporat" in question or "cycle" in question:
+            pieces = ["Water evaporates from oceans and lakes, ", "condenses into clouds, ", "and falls as rain or snow ", "[1]", ". It is then collected again ", "[1]", "."]
+        elif "magnet" in question or "core" in question or "layer" in question:
             pieces = ["Moving molten iron in the outer core ", "creates Earth's magnetic field ", "[1]", ". It shields the atmosphere ", "from the solar wind ", "[1]", "."]
         elif "fraction" in question:
             pieces = ["To add fractions with different denominators, ", "first find a common denominator ", "[1]", "."]

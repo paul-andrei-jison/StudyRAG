@@ -75,6 +75,7 @@ class ChatAnswer:
     mode: str = SEARCH                         # search | overview (answered from whole documents, no page-similarity gate)
     overview_notes: list[str] = field(default_factory=list)   # which papers, and how long ones were reduced
     model_calls_condensing: int = 0
+    choices: list[str] = field(default_factory=list)   # needs_choice: the paper titles, in the order of the numbers in `text` (1 = first)
 
     @property
     def cited_sources(self) -> list[Source]:

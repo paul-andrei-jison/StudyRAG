@@ -57,8 +57,39 @@ def scene_add(page, demo):
     tab(page, "Add")
 
 
+def ask(page, text: str):
+    page.locator("#sb-question textarea").fill(text)
+    page.locator("#sb-send").click()
+
+
+def scene_ask_answer(page, demo):
+    tab(page, "Ask")
+    ask(page, "How does water evaporate in the water cycle?")
+    page.wait_for_selector("#sb-chips label", state="visible", timeout=30000)
+    page.locator("#sb-chips label").first.click()
+    page.wait_for_selector("#sb-slip-image img", state="visible", timeout=15000)
+    page.wait_for_timeout(600)
+
+
+def scene_ask_refusal(page, demo):
+    tab(page, "Ask")
+    ask(page, "What is the capital of France?")
+    page.wait_for_selector("#sb-closest", state="visible", timeout=30000)
+    page.locator("#sb-closest").click()
+    page.wait_for_timeout(500)
+
+
+def scene_ask_which(page, demo):
+    tab(page, "Ask")
+    ask(page, "give me a summary of the entire paper")
+    page.wait_for_selector("#sb-which label", state="visible", timeout=30000)
+
+
 SCENES = {
     "ask-empty": scene_ask_empty,
+    "ask-answer": scene_ask_answer,
+    "ask-refusal": scene_ask_refusal,
+    "ask-which": scene_ask_which,
     "library": scene_library,
     "add": scene_add,
 }

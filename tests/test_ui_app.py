@@ -82,15 +82,17 @@ def test_chat_streams_then_cites_and_the_cited_page_opens(served):
     final = job.result(timeout=60)
     steps = job.outputs()
     assert len(steps) >= 3                                              # streamed in pieces, not one blob
-    chat, _question, caption, radio, image, info, text = final
+    # the client sees the value-carrying outputs only (not the layout, states or buttons)
+    chat, _question, chips, which, _image, _note, _text, hello = final
     assert chat[0] == {"role": "user", "content": QUESTION, "metadata": None, "options": None} or chat[0]["content"] == QUESTION
     assert "to make glucose [1]." in chat[-1]["content"]
-    assert caption.startswith("Sources")
-    labels = [c[0] for c in radio["choices"]]
-    assert labels[0].startswith("[1]") and "cited" in labels[0]
+    assert chips["label"] == "Sources" and chips["visible"] is True and which["visible"] is False
+    labels = [c[0] for c in chips["choices"]]
+    assert labels[0].startswith("1  Photosynthesis Worksheet, p. 1")
+    assert steps[0][7]["visible"] is False                                # the greeting gives way to the conversation
     shown, info, page_text = served.client.predict(1, api_name="/show_source")
     assert Image.open(shown).size == (300, 400)
-    assert "File: " in info and "Page: 1" in info and PAGE_TEXT[:20] in page_text
+    assert "<strong>" in info and ", page 1" in info and PAGE_TEXT[:20] in page_text
 
 
 def test_new_chat_forgets_the_conversation(served):
@@ -98,7 +100,7 @@ def test_new_chat_forgets_the_conversation(served):
     served.client.predict(QUESTION, [], ALL_SUBJECTS, api_name="/ask")
     assert len(served.client_model.stream_calls) == 1
     out = served.client.predict(api_name="/new_chat")
-    assert out[0] == []
+    assert out[0] == [] and out[7]["visible"] is True and "Good" in out[7]["value"]          # the greeting is back
     # a follow-up now starts a fresh conversation: no rewrite call is made, because there is no history
     before = len(served.client_model.chat_calls)
     served.client.predict("and what about oxygen?", [], ALL_SUBJECTS, api_name="/ask")
@@ -107,7 +109,7 @@ def test_new_chat_forgets_the_conversation(served):
 
 def test_an_empty_question_changes_nothing(served):
     out = served.client.predict("   ", [], ALL_SUBJECTS, api_name="/ask")
-    assert out[0] == [] and served.client_model.stream_calls == []
+    assert out[0] == {"__type__": "update"} and served.client_model.stream_calls == []     # nothing on the screen changes
 
 
 def test_library_detail_page_change_subject_and_delete_with_confirmation(served):

@@ -10,10 +10,12 @@ import html
 import gradio as gr
 from starlette.middleware import Middleware
 
+from ..chat.answers import NEEDS_CHOICE, NOT_IN_PAPERS_STATUS
 from ..config import network_exposure
 from ..errors import StudyBuddyError
 from .chat import DONE, source_choices, source_details, sources_caption, stream_turn
 from .library import TABLE_HEADERS
+from .markup import greeting, suggest_questions
 from .offline import StripExternalScripts
 from .runtime import Runtime
 from .theme import THEME_JS, build_theme, css
@@ -71,7 +73,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
         with gr.Row(elem_id="sb-header"):
             gr.HTML("<span id='sb-wordmark'>Study Buddy</span>", padding=False)
             with gr.Row(elem_id="sb-tools"):
-                gr.Button("Dark mode", elem_id="sb-theme", variant="secondary", min_width=44)
+                gr.Button("◐", elem_id="sb-theme", variant="secondary", min_width=44)
 
         # ---- status panel (every tab) ---------------------------------------------------------
         with gr.Accordion("Status", open=True):
@@ -95,41 +97,60 @@ def build_app(rt: Runtime) -> gr.Blocks:
         timer.tick(status, outputs=status_outputs, api_name=False, show_progress="hidden")
         retry_btn.click(retry_failed, outputs=[retry_msg, *status_outputs], api_name="retry_failed")
 
-        with gr.Tabs(elem_id="sb-tabs"):
-            # ---- chat ------------------------------------------------------------------------
-            with gr.Tab("Ask") as chat_tab:
+        with gr.Tabs(elem_id="sb-tabs") as tabs:
+            # ---- ask -------------------------------------------------------------------------------
+            with gr.Tab("Ask", id="ask") as chat_tab:
                 session_state = gr.State(None)
                 answer_state = gr.State(None)
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        chatbot = gr.Chatbot(type="messages", height=460, label="Conversation", sanitize_html=True,
-                                             render_markdown=True)
-                        with gr.Row():
-                            question = gr.Textbox(placeholder="Ask about your papers...", show_label=False, scale=5,
-                                                  lines=1, max_lines=4)
-                            send_btn = gr.Button("Ask", variant="primary", scale=1)
-                    with gr.Column(scale=2):
-                        chat_subject = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, label="Subject", interactive=True,
-                                                   allow_custom_value=True)
-                        new_btn = gr.Button("New chat")
-                        sources_md = gr.Markdown()
-                        source_radio = gr.Radio([], label="Pages", interactive=True)
-                        page_image = gr.Image(type="pil", format="jpeg", interactive=False, label="Page")
-                        page_info = gr.Textbox(label="File and page", lines=4, interactive=False, show_copy_button=True)
-                        page_text = gr.Textbox(label="Text read from this page", lines=8, interactive=False,
-                                               show_copy_button=True)
+                with gr.Column(elem_id="sb-ask"):
+                    hello = gr.HTML(greeting(), elem_id="sb-hello", padding=False)
+                    with gr.Column(elem_id="sb-convo", visible=False) as convo:
+                        chatbot = gr.Chatbot(type="messages", layout="bubble", show_label=False, container=False, height=None,
+                                             max_height="62vh", min_height=0, sanitize_html=True, render_markdown=True,
+                                             elem_id="sb-chat", group_consecutive_messages=False, autoscroll=True)
+                        chips = gr.Radio([], label="Sources", elem_id="sb-chips", interactive=True, visible=False)
+                        closest_btn = gr.Button("Show the closest pages", elem_id="sb-closest", size="sm", visible=False)
+                        which = gr.Radio([], label="Pick one", elem_id="sb-which", interactive=True, visible=False)
+                    with gr.Column(elem_id="sb-slip-col", visible=False) as slip_col, gr.Group(elem_id="sb-slip"):
+                        page_image = gr.Image(type="pil", format="jpeg", interactive=False, show_label=False, container=False,
+                                              elem_id="sb-slip-image", show_download_button=False, show_fullscreen_button=True)
+                        slip_note = gr.HTML(elem_id="sb-slip-note", padding=False)
+                        with gr.Accordion("Text read from this page", open=False, elem_id="sb-slip-text"):
+                            page_text = gr.Textbox(show_label=False, lines=8, interactive=False, container=False)
+                    with gr.Group(elem_id="sb-composer"):
+                        question = gr.Textbox(placeholder="Ask about your papers", show_label=False, container=False, lines=1,
+                                              max_lines=5, elem_id="sb-question", scale=5)
+                        send_btn = gr.Button("Ask", variant="primary", elem_id="sb-send", scale=0, min_width=88)
+                    with gr.Row(elem_id="sb-ask-tools"):
+                        chat_subject = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, show_label=False, container=False,
+                                                   interactive=True, allow_custom_value=True, elem_id="sb-subject", min_width=140)
+                        new_btn = gr.Button("New chat", size="sm", elem_id="sb-new", variant="secondary", min_width=100)
+                    with gr.Column(elem_id="sb-examples") as examples_box:
+                        example_btns = [gr.Button("", elem_classes=["sb-example"], visible=False, variant="secondary") for _ in range(3)]
+                        examples_note = gr.HTML(padding=False, elem_id="sb-examples-note")
+                        add_first_btn = gr.Button("Add papers", visible=False, variant="primary", elem_id="sb-add-first")
 
-                source_outputs = [sources_md, source_radio, page_image, page_info, page_text]
+                ASK_KEYS = ["chatbot", "question", "session", "answer", "chips", "which", "closest", "image", "note", "text",
+                            "hello", "convo", "slip", "examples"]
+                ask_parts = {"chatbot": chatbot, "question": question, "session": session_state, "answer": answer_state,
+                             "chips": chips, "which": which, "closest": closest_btn, "image": page_image, "note": slip_note,
+                             "text": page_text, "hello": hello, "convo": convo, "slip": slip_col, "examples": examples_box}
+                ask_outputs = [ask_parts[k] for k in ASK_KEYS]
 
-                def blank_sources():
-                    return "", gr.update(choices=[], value=None), None, "", ""
+                def pack(**changes):
+                    """One value per Ask output; anything not named stays as it is."""
+                    return tuple(changes.get(key, gr.update()) for key in ASK_KEYS)
+
+                def hidden(**extra):
+                    return dict(chips=gr.update(choices=[], value=None, visible=False), which=gr.update(choices=[], value=None, visible=False),
+                                closest=gr.update(visible=False), slip=gr.update(visible=False), image=None, note="", text="", **extra)
 
                 def ask(text, history, subject, session, answer):
                     text = (text or "").strip()
                     history = list(history or [])
                     if not text:
                         gr.Warning("Type a question first.")
-                        yield (history, gr.update(), session, answer, *[gr.update()] * 5)
+                        yield pack()
                         return
                     session = session or rt.new_session()
                     shown = history + [{"role": "user", "content": text}]
@@ -137,41 +158,70 @@ def build_app(rt: Runtime) -> gr.Blocks:
                     for update in stream_turn(session, text, _subject_filter(subject)):
                         message = {"role": "assistant", "content": update.text}
                         if update.phase == DONE and update.answer is not None:
-                            ans = update.answer
-                            yield (shown + [message], "", session, ans, sources_caption(ans),
-                                   gr.update(choices=source_choices(ans), value=None), None, "", "")
+                            yield pack(chatbot=shown + [message], question="", session=session, answer=update.answer,
+                                       **answer_view(update.answer))
+                        elif first:
+                            yield pack(chatbot=shown + [message], question="", session=session, answer=None, hello=gr.update(visible=False),
+                                       convo=gr.update(visible=True), examples=gr.update(visible=False), **hidden())
                         else:
-                            yield (shown + [message], "" if first else gr.update(), session, None if first else gr.update(),
-                                   *(blank_sources() if first else [gr.update()] * 5))
+                            yield pack(chatbot=shown + [message])
                         first = False
 
+                def answer_view(ans):
+                    """What sits under a finished answer: chips, the 'closest pages' button, or tappable paper titles."""
+                    if ans.status == NEEDS_CHOICE and ans.choices:
+                        return dict(which=gr.update(choices=[(title, str(n)) for n, title in enumerate(ans.choices, 1)], value=None, visible=True),
+                                    chips=gr.update(choices=[], visible=False), closest=gr.update(visible=False))
+                    choices = source_choices(ans)
+                    if ans.status == NOT_IN_PAPERS_STATUS:
+                        return dict(chips=gr.update(choices=choices, value=None, visible=False, label=sources_caption(ans)),
+                                    closest=gr.update(visible=bool(choices)), which=gr.update(visible=False))
+                    return dict(chips=gr.update(choices=choices, value=None, visible=bool(choices), label=sources_caption(ans)),
+                                closest=gr.update(visible=False), which=gr.update(visible=False))
+
                 ask_inputs = [question, chatbot, chat_subject, session_state, answer_state]
-                ask_outputs = [chatbot, question, session_state, answer_state, *source_outputs]
                 send_btn.click(ask, ask_inputs, ask_outputs, api_name="ask", concurrency_limit=1, concurrency_id="chat",
                                show_progress="hidden")
                 question.submit(ask, ask_inputs, ask_outputs, api_name=False, concurrency_limit=1, concurrency_id="chat",
                                 show_progress="hidden")
+                which.input(lambda number: number, [which], [question], api_name=False).then(
+                    ask, ask_inputs, ask_outputs, api_name=False, concurrency_limit=1, concurrency_id="chat", show_progress="hidden")
+                for example in example_btns:
+                    example.click(lambda label: label, [example], [question], api_name=False).then(
+                        ask, ask_inputs, ask_outputs, api_name=False, concurrency_limit=1, concurrency_id="chat", show_progress="hidden")
+                closest_btn.click(lambda: (gr.update(visible=True), gr.update(visible=False)), None, [chips, closest_btn], api_name=False)
 
                 def new_chat(session):
                     if session is not None:
                         session.new()
-                    return ([], "", session, None, *blank_sources())
+                    return pack(chatbot=[], question="", session=session, answer=None, hello=gr.update(visible=True, value=greeting()),
+                                convo=gr.update(visible=False), examples=gr.update(visible=True), **hidden())
 
-                new_btn.click(new_chat, [session_state], [chatbot, question, session_state, answer_state, *source_outputs],
-                              api_name="new_chat")
+                new_btn.click(new_chat, [session_state], ask_outputs, api_name="new_chat")
 
                 def show_source(answer, number):
                     if answer is None or number is None:
-                        return None, "", ""
-                    return source_details(answer, int(number), rt.guard)
+                        return None, "", "", gr.update(visible=False)
+                    image, caption, text = source_details(answer, int(number), rt.guard)
+                    return image, caption, text, gr.update(visible=True)
 
-                source_radio.input(show_source, [answer_state, source_radio], [page_image, page_info, page_text],
-                                   api_name="show_source")
+                chips.input(show_source, [answer_state, chips], [page_image, slip_note, page_text, slip_col], api_name="show_source")
+
+                def example_updates():
+                    questions = suggest_questions(rt.library.rows())
+                    buttons = [gr.update(value=questions[i], visible=True) if i < len(questions) else gr.update(value="", visible=False)
+                               for i in range(3)]
+                    note = "" if questions else ("<p class='sb-muted'>You have not added any papers yet. Add a photo or a PDF, "
+                                                 "or send a photo to your Telegram bot, then ask about it here.</p>")
+                    return (*buttons, note, gr.update(visible=not questions))
+
+                example_outputs = [*example_btns, examples_note, add_first_btn]
                 chat_subject.focus(refresh_filter, [chat_subject], [chat_subject], api_name=False)
-                chat_tab.select(refresh_filter, [chat_subject], [chat_subject], api_name=False)
+                chat_tab.select(lambda f: (refresh_filter(f), *example_updates()), [chat_subject], [chat_subject, *example_outputs],
+                                api_name=False)
 
             # ---- library ---------------------------------------------------------------------
-            with gr.Tab("Library") as library_tab:
+            with gr.Tab("Library", id="library") as library_tab:
                 with gr.Row():
                     lib_filter = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, label="Show subject", scale=3,
                                              allow_custom_value=True)
@@ -274,7 +324,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 cancel_btn.click(lambda: gr.update(visible=False), None, [confirm_group], api_name=False)
 
             # ---- upload ----------------------------------------------------------------------
-            with gr.Tab("Add") as upload_tab:
+            with gr.Tab("Add", id="add") as upload_tab:
                 gr.Markdown("Drop photos of your papers or a PDF. They are read in the background; the status panel shows progress.")
                 files = gr.File(label="Photos or PDF", file_count="multiple", file_types=UPLOAD_TYPES, type="filepath")
                 with gr.Row():
@@ -292,9 +342,10 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 up_subject.focus(refresh_upload_subject, [up_subject], [up_subject], api_name=False)
                 upload_tab.select(refresh_upload_subject, [up_subject], [up_subject], api_name=False)
 
+        add_first_btn.click(lambda: gr.Tabs(selected="add"), None, [tabs], api_name=False)
         demo.load(lambda: (*status(), refresh_filter(None), refresh_filter(None), refresh_upload_subject(None),
-                           rt.library.table(None)),
-                  outputs=[*status_outputs, chat_subject, lib_filter, up_subject, table], api_name=False)
+                           rt.library.table(None), greeting(), *example_updates()),
+                  outputs=[*status_outputs, chat_subject, lib_filter, up_subject, table, hello, *example_outputs], api_name=False)
 
         # Plain endpoints for scripts and tests (gradio_client); the buttons are never shown.
         status_api = gr.Button(visible=False)

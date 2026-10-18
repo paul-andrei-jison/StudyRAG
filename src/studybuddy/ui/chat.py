@@ -18,6 +18,7 @@ from ..chat.answers import ERROR, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, ChatAnswer
 from ..chat.session import ChatSession
 from ..errors import ChatContextError, IndexMismatchError, StudyBuddyError, TransientLLMError
 from .files import LibraryGuard
+from .markup import slip_caption
 
 log = logging.getLogger(__name__)
 
@@ -37,29 +38,24 @@ class TurnUpdate:
 
 
 def waking_text(elapsed: float) -> str:
-    return f"_Waking the model, this can take a minute... ({int(elapsed)} s)_"
+    return f"_Waking up the model. This can take a minute ({int(elapsed)} s)._"
 
 
 def searching_text(elapsed: float) -> str:
-    return f"_Searching your papers... ({int(elapsed)} s)_"
+    return f"_Looking through your papers ({int(elapsed)} s)._"
 
 
 def friendly_error(exc: BaseException) -> str:
-    """One plain sentence for the student; never a traceback."""
+    """What happened and what to do next, in one or two plain sentences; never a traceback."""
     if isinstance(exc, TransientLLMError):
-        return (f"I can't reach the language model right now. Check that LM Studio is running with the models loaded, "
-                f"then ask again. ({exc})")
+        return ("I can't reach the language model. Open LM Studio, load the models and start its server, then ask again.")
     if isinstance(exc, IndexMismatchError):
-        return (f"The search index was built with a different embedding model, so questions can't be answered until it is "
-                f"rebuilt: run `python scripts/index_admin.py reindex`. ({exc})")
-    if isinstance(exc, ChatContextError):
-        return str(exc)
-    if isinstance(exc, StudyBuddyError):
-        return str(exc)
-    if isinstance(exc, ValueError):
+        return ("Your papers were indexed with a different embedding model, so questions can't be answered yet. "
+                "Run `python scripts/index_admin.py reindex`, or set the embedding model in `.env` back to the old one.")
+    if isinstance(exc, (ChatContextError, StudyBuddyError, ValueError)):
         return str(exc)
     log.error("unexpected chat failure", exc_info=exc)
-    return f"Something went wrong ({type(exc).__name__}: {exc}). Please ask again."
+    return "Something went wrong while answering. Ask again; if it keeps happening, look at the log file (its path is shown when the app starts)."
 
 
 def stream_turn(session: ChatSession, question: str, subject: str | None, *, wake_after: float = WAKE_AFTER_SECONDS,
@@ -131,65 +127,58 @@ def _body_and_notes(answer: ChatAnswer) -> tuple[str, list[str]]:
 def render_answer(answer: ChatAnswer) -> str:
     """The final message: the answer, then what the program (not the model) wants the student to know."""
     if answer.status == NEEDS_CHOICE:
-        return answer.text
+        return "Which paper do you mean?" if answer.choices else answer.text
     if answer.status == NOT_IN_PAPERS_STATUS:
-        lines = ["**Not in your papers.**", "", answer.text]
-        if answer.refusal_reason:
-            lines += ["", f"_Why: {answer.refusal_reason}._"]
-        if answer.sources:
-            lines += ["", "The pages below are the closest ones, but they are **probably not relevant**."]
-        return "\n".join(lines)
+        return "I couldn't find that in your papers."
     if answer.status == ERROR:
-        return f"**No answer this time.** {answer.text}"
+        return answer.text
     body, notes = _body_and_notes(answer)
     lines = [body]
     for note in notes:
         lines += ["", f"> **Check this:** {note.removeprefix('Note: ')}"]
     if answer.truncated:
-        lines += ["", "> **Incomplete:** this answer was cut short."]
+        lines += ["", "> **This answer was cut short.** Ask again to get the rest."]
     for warning in answer.warnings:
-        lines += ["", f"_Heads up: {warning}._"]
+        lines += ["", f"_{warning}_"]
     return "\n".join(lines)
 
 
-def source_label(source: Source) -> str:
-    marks = []
-    if source.cited:
-        marks.append("cited")
-    if source.hard_to_read:
-        marks.append("hard to read")
-    suffix = f"  ({', '.join(marks)})" if marks else ""
-    return f"[{source.number}] {source.subject or 'no subject'} | {source.title or '(untitled)'} | page {source.page_number}{suffix}"
+CHIP_TITLE_CHARS = 30
+
+
+def _short(text: str, limit: int) -> str:
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:-") if " " in text[:limit] else text[:limit]
+
+
+def chip_label(source: Source) -> str:
+    """Short text for a source chip: its number, the paper and the page. Plain text only (a Radio label is not markdown)."""
+    return f"{source.number}  {_short(source.title or 'Untitled', CHIP_TITLE_CHARS)}, p. {source.page_number}"
 
 
 def source_choices(answer: ChatAnswer) -> list[tuple[str, int]]:
-    """(label, source number) for the sources list, cited sources first. A refusal lists the closest pages as such."""
+    """(chip text, source number), cited sources first. For a refusal these are the closest pages, not cited ones."""
     ordered = sorted(answer.sources, key=lambda s: (not s.cited, s.number))
-    return [(source_label(s), s.number) for s in ordered]
+    return [(chip_label(s), s.number) for s in ordered]
 
 
 def sources_caption(answer: ChatAnswer) -> str:
+    """The small heading above the chips; empty when there is nothing to show."""
     if not answer.sources:
-        return "No sources."
-    if answer.status == NOT_IN_PAPERS_STATUS:
-        return "Closest pages (probably not relevant) - click one to see it"
-    return "Sources - click one to see the page"
+        return ""
+    return "Closest pages, probably not what you asked about" if answer.status == NOT_IN_PAPERS_STATUS else "Sources"
 
 
 def source_details(answer: ChatAnswer, number: int, guard: LibraryGuard) -> tuple[Image.Image | None, str, str]:
-    """(page image or None, file/page description, text read from the page) for a clicked source."""
+    """(page image or None, caption HTML for the slip, text read from the page) for a chosen source."""
     source = next((s for s in answer.sources if s.number == number), None)
     if source is None:
-        return None, "That source is not in the last answer.", ""
-    lines = [f"File: {source.file_path}", f"Page: {source.page_number}", f"Subject: {source.subject or '-'}  |  Title: {source.title or '-'}"]
-    if source.cited:
-        lines.append("This page was cited in the answer.")
-    if source.hard_to_read:
-        why = "; ".join(source.problems)
-        lines.append(f"Hard to read{': ' + why if why else ''}. Check the photo.")
-    image = None
+        return None, slip_caption(None, "That source is not in the last answer."), ""
+    image, problem = None, None
     try:
         image = guard.render_page(source.image_path, source.page_number)
     except StudyBuddyError as exc:
-        lines.append(f"Page image not shown: {exc}")
-    return image, "\n".join(lines), source.text
+        problem = f"The page image is not available: {exc}"
+    return image, slip_caption(source, problem), source.text
