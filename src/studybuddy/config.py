@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
@@ -32,7 +32,7 @@ class Settings:
     data_dir: Path
     subjects_file: Path
     tag_timeout_seconds: int
-    telegram_token: str | None
+    telegram_token: str | None = field(repr=False)   # a secret: never in a repr, a log line or a message
     telegram_user_id: int | None
     # Task prefixes some embedding models need (e.g. nomic: "search_document: "/"search_query: ").
     embed_doc_prefix: str = ""
@@ -44,6 +44,7 @@ class Settings:
     chat_expand_queries: bool = True   # search with two rephrasings too (measured to help; see docs/chat.md)
     host: str = DEFAULT_HOST           # where the web UI listens; anything but loopback is reachable from the network
     port: int = DEFAULT_PORT
+    telegram_enabled: bool = True      # SB_TELEGRAM_ENABLED; the bot also needs a token and the student's user id
 
 
 def _path(value: str) -> Path:
@@ -108,11 +109,15 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
     if port > 65535:
         raise ConfigError("SB_PORT must be at most 65535")
 
-    user_id = get("TELEGRAM_USER_ID")
+    user_id_name = "SB_TELEGRAM_USER_ID" if get("SB_TELEGRAM_USER_ID") else "TELEGRAM_USER_ID"   # the old name still works
+    user_id = get("SB_TELEGRAM_USER_ID") or get("TELEGRAM_USER_ID")
     try:
         telegram_user_id = int(user_id) if user_id else None
     except ValueError as exc:
-        raise ConfigError("TELEGRAM_USER_ID must be a number") from exc
+        raise ConfigError(f"{user_id_name} must be a number") from exc
+    telegram_raw = (get("SB_TELEGRAM_ENABLED", "1") or "1").lower()
+    if telegram_raw not in ("1", "0", "true", "false", "yes", "no", "on", "off"):
+        raise ConfigError("SB_TELEGRAM_ENABLED must be 1/0, true/false, yes/no or on/off")
 
     subjects = Path(get("SB_SUBJECTS_FILE", "subjects.json")).expanduser()
     if not subjects.is_absolute():
@@ -139,6 +144,7 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         chat_expand_queries=expand_raw in ("1", "true", "yes", "on"),
         host=get("SB_HOST", DEFAULT_HOST),
         port=port,
+        telegram_enabled=telegram_raw in ("1", "true", "yes", "on"),
     )
 
 
@@ -172,3 +178,23 @@ def validate_dirs(settings: Settings, repo_root: Path = REPO_ROOT) -> None:
             raise ConfigError(f"Cannot create {label} ({d}): {exc}") from exc
         if not d.is_dir():
             raise ConfigError(f"{label} ({d}) is not a directory")
+
+
+@dataclass(frozen=True)
+class BotPlan:
+    enabled: bool
+    reason: str       # shown at start-up: "on", or why the bot is off
+
+
+def bot_plan(settings: Settings, no_bot: bool = False) -> BotPlan:
+    """Whether the Telegram bot runs. A token without the student's user id is an error: the bot would answer anybody."""
+    if no_bot:
+        return BotPlan(False, "turned off with --no-bot")
+    if not settings.telegram_enabled:
+        return BotPlan(False, "SB_TELEGRAM_ENABLED is off")
+    if not settings.telegram_token:
+        return BotPlan(False, "no TELEGRAM_BOT_TOKEN in .env")
+    if settings.telegram_user_id is None:
+        raise ConfigError("TELEGRAM_BOT_TOKEN is set but SB_TELEGRAM_USER_ID is not, so the bot would answer anybody and will not start. "
+                          "Set SB_TELEGRAM_USER_ID in .env (python scripts/telegram_whoami.py finds it), or start with --no-bot.")
+    return BotPlan(True, "on")

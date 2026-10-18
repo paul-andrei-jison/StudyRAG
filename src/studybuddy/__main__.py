@@ -16,13 +16,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")   # before gradio is imported
     parser = argparse.ArgumentParser(prog="python -m studybuddy", description="Run the Study Buddy web app.")
     parser.add_argument("--no-ocr", action="store_true", help="skip the classic OCR cross-check while reading pages")
+    parser.add_argument("--no-bot", action="store_true", help="do not run the Telegram bot even if a token is set")
     args = parser.parse_args(argv)
 
-    from .config import load_settings, network_exposure
+    from .config import bot_plan, load_settings, network_exposure
     from .errors import StudyBuddyError
+    from .logsafe import install_log_safety
 
     try:
         settings = load_settings()
+        install_log_safety([settings.telegram_token])      # the bot token never reaches a log line
+        bot_plan(settings, args.no_bot)                    # a token without SB_TELEGRAM_USER_ID stops the start here
         warning = network_exposure(settings.host)
         from .ui.runtime import build_runtime
 
