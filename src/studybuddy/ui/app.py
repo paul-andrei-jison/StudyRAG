@@ -59,6 +59,11 @@ def build_app(rt: Runtime) -> gr.Blocks:
         names = [AUTO_DETECT] + subject_names()
         return gr.update(choices=names, value=current if current in names else AUTO_DETECT)
 
+    try:
+        start_names = rt.subjects.choices()
+    except StudyBuddyError:
+        start_names = []
+
     with gr.Blocks(title="Study Buddy", css=CSS) as demo:
         gr.Markdown("# Study Buddy\nAsk questions about your own papers. Answers cite the page they came from.")
         banner = exposure_banner(rt.settings.host)
@@ -101,7 +106,8 @@ def build_app(rt: Runtime) -> gr.Blocks:
                                                   lines=1, max_lines=4)
                             send_btn = gr.Button("Ask", variant="primary", scale=1)
                     with gr.Column(scale=2):
-                        chat_subject = gr.Dropdown([ALL_SUBJECTS], value=ALL_SUBJECTS, label="Subject", interactive=True)
+                        chat_subject = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, label="Subject", interactive=True,
+                                                   allow_custom_value=True)
                         new_btn = gr.Button("New chat")
                         sources_md = gr.Markdown()
                         source_radio = gr.Radio([], label="Pages", interactive=True)
@@ -164,7 +170,8 @@ def build_app(rt: Runtime) -> gr.Blocks:
             # ---- library ---------------------------------------------------------------------
             with gr.Tab("Library") as library_tab:
                 with gr.Row():
-                    lib_filter = gr.Dropdown([ALL_SUBJECTS], value=ALL_SUBJECTS, label="Show subject", scale=3)
+                    lib_filter = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, label="Show subject", scale=3,
+                                             allow_custom_value=True)
                     lib_refresh_btn = gr.Button("Refresh", scale=1)
                 table = gr.Dataframe(headers=TABLE_HEADERS, datatype="str", type="array", interactive=False, wrap=True,
                                      max_height=320, label="Documents (click a row)")
@@ -174,7 +181,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
                     with gr.Column(scale=2):
                         detail_box = gr.Textbox(label="Document", lines=9, interactive=False, show_copy_button=True)
                         with gr.Row():
-                            new_subject = gr.Dropdown([], label="Change subject to", allow_custom_value=True, scale=3)
+                            new_subject = gr.Dropdown(start_names, label="Change subject to", allow_custom_value=True, scale=3)
                             change_btn = gr.Button("Change subject", scale=1)
                         delete_btn = gr.Button("Delete from index...", variant="stop")
                         with gr.Group(visible=False) as confirm_group:
@@ -183,7 +190,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
                                 confirm_btn = gr.Button("Yes, remove it", variant="stop")
                                 cancel_btn = gr.Button("Cancel")
                     with gr.Column(scale=3):
-                        page_pick = gr.Dropdown([], label="Page", interactive=True)
+                        page_pick = gr.Dropdown([], label="Page", interactive=True, allow_custom_value=True)
                         lib_image = gr.Image(type="pil", format="jpeg", interactive=False, label="Original page")
                         lib_image_note = gr.Markdown()
 
@@ -268,7 +275,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 gr.Markdown("Drop photos of your papers or a PDF. They are read in the background; the status panel shows progress.")
                 files = gr.File(label="Photos or PDF", file_count="multiple", file_types=UPLOAD_TYPES, type="filepath")
                 with gr.Row():
-                    up_subject = gr.Dropdown([AUTO_DETECT], value=AUTO_DETECT, label="Subject (type a new one if needed)",
+                    up_subject = gr.Dropdown([AUTO_DETECT, *start_names], value=AUTO_DETECT, label="Subject (type a new one if needed)",
                                              allow_custom_value=True, scale=3)
                     album = gr.Checkbox(label="These photos are pages of one document (album)", value=False, scale=2)
                 upload_btn = gr.Button("Add to my library", variant="primary")
@@ -286,9 +293,12 @@ def build_app(rt: Runtime) -> gr.Blocks:
                            rt.library.table(None)),
                   outputs=[*status_outputs, chat_subject, lib_filter, up_subject, table], api_name=False)
 
-        # Plain endpoints for scripts and tests (gradio_client); the UI itself does not call these.
-        gr.api(lambda: subject_names(), api_name="subjects")
-        gr.api(status, api_name="status")
+        # Plain endpoints for scripts and tests (gradio_client); the buttons are never shown.
+        status_api = gr.Button(visible=False)
+        status_api.click(status, outputs=status_outputs, api_name="status")
+        subjects_out = gr.JSON(visible=False)
+        subjects_api = gr.Button(visible=False)
+        subjects_api.click(subject_names, outputs=subjects_out, api_name="subjects")
 
     demo.queue(default_concurrency_limit=4)
     return demo
