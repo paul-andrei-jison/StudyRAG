@@ -98,6 +98,9 @@ class IngestService:
                cleanup_sources: bool = True) -> Ticket:
         """Queue a document (one file, or several photos with `is_album=True`). Thread-safe, returns at once.
 
+        Several paths are ONE document, so they need `is_album=True`; otherwise this raises. Send unrelated files with one
+        `submit()` each (a job is hashed and deduplicated as a whole, so a loose second file could be dropped as a duplicate).
+
         `subject` is the student's choice (a new typed subject is added to the list when the document is filed);
         None means auto-detect. An invalid
         subject raises SubjectError here, so the caller can say so immediately instead of failing later."""
@@ -106,6 +109,8 @@ class IngestService:
         paths = [Path(p) for p in paths]
         if not paths:
             raise ValueError("submit() needs at least one file")
+        if len(paths) > 1 and not is_album:
+            raise StudyBuddyError("Several files are one document only as an album. Submit each file on its own, or pass is_album=True.")
         if isinstance(source_kind, str) or source_kind is None:
             kinds = [source_kind or "document"] * len(paths)
         else:

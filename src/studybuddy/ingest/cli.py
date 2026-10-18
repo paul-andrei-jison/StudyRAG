@@ -149,10 +149,14 @@ def _once(service: IngestService, args: argparse.Namespace, results: list[Ingest
     if missing:
         print(f"[FAIL] not found: {', '.join(missing)}", file=out)
         return 1
-    ticket = service.submit(args.files, subject=args.subject, is_album=args.album, cleanup_sources=not args.keep,
-                            origin="cli")
-    ticket.reported.result()  # the callback prints it; a deferred job is reported here and not waited for
-    if not ticket.final.done():
+    # several files are one document only with --album; otherwise each file is its own document (its own job)
+    groups = [args.files] if args.album or len(args.files) == 1 else [[f] for f in args.files]
+    waiting = False
+    for files in groups:
+        ticket = service.submit(files, subject=args.subject, is_album=args.album, cleanup_sources=not args.keep, origin="cli")
+        ticket.reported.result()  # the callback prints it; a deferred job is reported here and not waited for
+        waiting = waiting or not ticket.final.done()
+    if waiting:
         print("LM Studio is not available; the document stays queued and is retried when the service runs "
               "(ingest.py run).", file=out)
     return _exit_code(results)

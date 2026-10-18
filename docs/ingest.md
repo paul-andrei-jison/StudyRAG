@@ -84,9 +84,10 @@ the backoff when the real server was reachable. Searching the filed documents wi
 - Handwriting, tables, formulas and multi-column pages are untested on real photos beyond the bake-off pages.
 - The Telegram bot (chunk 7) must hold the original bytes in `_Unsorted` itself until it calls `submit()`.
 
-## Several files in one submit (checked 2026-10-18, real run on copies; not changed)
+## Several files in one submit (checked 2026-10-18; `submit()` now refuses the unsafe case)
 
-One `submit()` / `ingest.py once` call is ONE job, and a job is ONE document. `is_album` is the only thing that says the files are pages of that document.
+One `submit()` call is ONE job, and a job is ONE document. `is_album` is the only thing that says the files are pages of that document.
+**Since Chunk 7 `submit()` raises for several paths without `is_album=True`** ("Several files are one document only as an album ..."): nothing is queued or moved. `ingest.py once a b c` therefore submits each file on its own unless `--album` is given; the Upload tab and the inbox already did this. The paragraphs below describe what happened before that guard.
 
 - **Several files, not an album:** the job's hash is that of the FIRST file only. If the first file is already in the library the whole job is reported `duplicate` and ALL files
   (including new ones) are moved to `data/duplicates/`: the new pages are kept but never read or indexed (seen: an indexed photo plus a new one gave `DUPLICATE`, both ended up in `duplicates/`).

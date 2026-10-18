@@ -86,6 +86,22 @@ def test_submit_validates_input(running):
         service.submit([])
 
 
+def test_several_paths_need_an_album_and_are_refused_otherwise(running):
+    env, service, *_ = running
+    pages = [photo(env, f"{i}.jpg", color=(i * 20, 9, 9)) for i in (1, 2)]
+    with pytest.raises(StudyBuddyError, match="only as an album"):
+        service.submit(pages, subject="Math")
+    assert service.status()["queued"] == 0 and all(p.exists() for p in pages)       # nothing was queued, nothing moved
+    assert service.submit(pages, subject="Math", is_album=True).result(timeout=20).page_count == 2
+
+
+def test_separate_documents_are_submitted_one_at_a_time(running):
+    env, service, *_ = running
+    first, second = (photo(env, f"{n}.jpg", color=c) for n, c in (("a", (10, 10, 10)), ("b", (200, 30, 30))))
+    results = [service.submit([p], subject="Math").result(timeout=20) for p in (first, second)]
+    assert [r.status for r in results] == ["indexed", "indexed"] and env.counts()["documents"] == 2
+
+
 def test_default_kind_is_detected_later_and_kinds_can_be_given_per_file(running):
     env, service, *_ = running
     pages = [photo(env, f"{i}.jpg", color=(i * 20, 9, 9)) for i in (1, 2)]

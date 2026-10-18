@@ -58,6 +58,12 @@ def test_once_album(env):
     assert code == 0 and "3 pages" in text and "pdf:" in text and env.counts()["pages"] == 3
 
 
+def test_once_with_several_files_and_no_album_makes_one_document_per_file(env):
+    files = [make_photo(env.inbox / f"{i}.jpg", color=(i * 40, 5, 5)) for i in (1, 2)]
+    code, text = run(["once", *map(str, files), "--subject", "Science"], env)
+    assert code == 0 and text.count("INDEXED") == 2 and env.counts()["documents"] == 2
+
+
 def test_once_auto_detects_the_subject(env):
     code, text = run(["once", str(make_photo(env.inbox / "a.jpg"))], env)
     assert code == 0 and "Science | Photosynthesis Worksheet | 1 page | subject auto" in text
