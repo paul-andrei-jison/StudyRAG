@@ -1,6 +1,6 @@
 import pytest
 
-from studybuddy.config import DEFAULT_BASE_URL, load_settings, validate_dirs
+from studybuddy.config import DEFAULT_BASE_URL, load_settings, network_exposure, validate_dirs
 from studybuddy.errors import ConfigError
 
 
@@ -143,3 +143,30 @@ def test_missing_samples_dir_is_not_created(tmp_path, repo):
     s = load(tmp_path, repo, SB_SAMPLES_DIR=str(tmp_path / "samples"))
     validate_dirs(s, repo_root=repo)
     assert not (tmp_path / "samples").exists()
+
+
+def test_host_and_port_defaults(tmp_path, repo):
+    s = load(tmp_path, repo)
+    assert (s.host, s.port) == ("127.0.0.1", 7860)
+
+
+def test_host_and_port_override(tmp_path, repo):
+    s = load(tmp_path, repo, SB_HOST="0.0.0.0", SB_PORT="8000")
+    assert (s.host, s.port) == ("0.0.0.0", 8000)
+
+
+@pytest.mark.parametrize("value", ["abc", "0", "70000"])
+def test_port_invalid(tmp_path, repo, value):
+    with pytest.raises(ConfigError, match="SB_PORT"):
+        load(tmp_path, repo, SB_PORT=value)
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "LOCALHOST", "::1", "[::1]"])
+def test_loopback_hosts_have_no_warning(host):
+    assert network_exposure(host) is None
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.20", "mypc.local", ""])
+def test_other_hosts_warn_about_missing_login(host):
+    warning = network_exposure(host)
+    assert warning and "NO login" in warning

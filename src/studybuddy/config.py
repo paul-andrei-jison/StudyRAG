@@ -16,6 +16,9 @@ DEFAULT_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_TAG_TIMEOUT = 300
 DEFAULT_READER_MAX_EDGE = 2048  # see docs/reader-image-policy.md
 DEFAULT_CHAT_ANSWER_TOKENS = 700
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 7860
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,8 @@ class Settings:
     chat_context_tokens: int | None = None   # override when LM Studio cannot report the loaded context size
     chat_max_answer_tokens: int = DEFAULT_CHAT_ANSWER_TOKENS
     chat_expand_queries: bool = True   # search with two rephrasings too (measured to help; see docs/chat.md)
+    host: str = DEFAULT_HOST           # where the web UI listens; anything but loopback is reachable from the network
+    port: int = DEFAULT_PORT
 
 
 def _path(value: str) -> Path:
@@ -99,6 +104,10 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
     chat_context = positive_int("SB_CHAT_CONTEXT_TOKENS", None, 1024)
     chat_answer = positive_int("SB_CHAT_MAX_ANSWER_TOKENS", DEFAULT_CHAT_ANSWER_TOKENS, 64)
 
+    port = positive_int("SB_PORT", DEFAULT_PORT, 1)
+    if port > 65535:
+        raise ConfigError("SB_PORT must be at most 65535")
+
     user_id = get("TELEGRAM_USER_ID")
     try:
         telegram_user_id = int(user_id) if user_id else None
@@ -128,7 +137,18 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         chat_context_tokens=chat_context,
         chat_max_answer_tokens=chat_answer,
         chat_expand_queries=expand_raw in ("1", "true", "yes", "on"),
+        host=get("SB_HOST", DEFAULT_HOST),
+        port=port,
     )
+
+
+def network_exposure(host: str) -> str | None:
+    """A warning when `host` lets other machines reach the UI (it has no login), else None."""
+    name = host.strip().strip("[]").casefold()
+    if name in LOOPBACK_HOSTS:
+        return None
+    return (f"SB_HOST={host} makes the study buddy reachable from the network. There is NO login: anyone who can "
+            f"connect can read, change and delete your library. Use 127.0.0.1 unless you really mean this.")
 
 
 def validate_dirs(settings: Settings, repo_root: Path = REPO_ROOT) -> None:
