@@ -8,6 +8,8 @@ from ..reader.quality import ATTENTION_FLAGS, ATTENTION_QUALITY
 from ..ingest.results import FLAG_REASONS
 
 ANSWERED, NOT_IN_PAPERS_STATUS, ERROR = "answered", "not_in_papers", "error"
+NEEDS_CHOICE = "needs_choice"      # an overview question that could mean several papers: the answer text asks which
+SEARCH, OVERVIEW = "search", "overview"
 
 
 @dataclass
@@ -43,10 +45,16 @@ class Source:
                    hit.page_quality, list(hit.page_flags), hit.vector_score, hit.keyword_score)
 
 
+@dataclass(frozen=True)
+class Progress:
+    """Yielded by `ask_stream` while slow preparation (condensing pages) is under way; it is not part of the answer."""
+    text: str
+
+
 @dataclass
 class ChatAnswer:
     text: str                                  # the answer shown to the student, citations validated, notes appended
-    status: str                                # answered | not_in_papers | error
+    status: str                                # answered | not_in_papers | error | needs_choice
     sources: list[Source] = field(default_factory=list)   # numbered; for a refusal: the closest pages (not cited)
     cited: list[int] = field(default_factory=list)
     invalid_citations: list[int] = field(default_factory=list)   # numbers that named no source (stripped)
@@ -64,6 +72,9 @@ class ChatAnswer:
     context_tokens: int | None = None
     first_token_seconds: float | None = None
     total_seconds: float = 0.0
+    mode: str = SEARCH                         # search | overview (answered from whole documents, no page-similarity gate)
+    overview_notes: list[str] = field(default_factory=list)   # which papers, and how long ones were reduced
+    model_calls_condensing: int = 0
 
     @property
     def cited_sources(self) -> list[Source]:

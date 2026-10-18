@@ -14,7 +14,7 @@ from typing import Iterator
 
 from PIL import Image
 
-from ..chat.answers import ERROR, NOT_IN_PAPERS_STATUS, ChatAnswer, Source
+from ..chat.answers import ERROR, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, ChatAnswer, Progress, Source
 from ..chat.session import ChatSession
 from ..errors import ChatContextError, IndexMismatchError, StudyBuddyError, TransientLLMError
 from .files import LibraryGuard
@@ -24,14 +24,14 @@ log = logging.getLogger(__name__)
 SEARCH_AFTER_SECONDS = 1.0     # nothing yet: say we are working
 WAKE_AFTER_SECONDS = 8.0       # still nothing: a warm question starts answering in about 5 s, so this is the model loading
 POLL_SECONDS = 0.25
-SEARCHING, WAKING, STREAMING, DONE, FAILED = "searching", "waking", "streaming", "done", "error"
+SEARCHING, WAKING, WORKING, STREAMING, DONE, FAILED = "searching", "waking", "working", "streaming", "done", "error"
 _END = object()
 
 
 @dataclass
 class TurnUpdate:
     text: str                       # what the assistant message shows right now
-    phase: str                      # searching | waking | streaming | done | error
+    phase: str                      # searching | waking | working | streaming | done | error
     answer: ChatAnswer | None = None   # only on the last update of a successful turn
     elapsed: float = 0.0
 
@@ -87,11 +87,14 @@ def stream_turn(session: ChatSession, question: str, subject: str | None, *, wak
 
     threading.Thread(target=work, name="chat-turn", daemon=True).start()
     shown = ""
+    working = False                 # condensing pages: slow on purpose, not a sleeping model
     while True:
         try:
             item = items.get(timeout=poll)
         except queue.Empty:
             elapsed = clock() - started
+            if working:
+                continue
             if not shown and elapsed >= wake_after:
                 yield TurnUpdate(waking_text(elapsed), WAKING, elapsed=elapsed)
             elif not shown and elapsed >= search_after:
@@ -103,6 +106,10 @@ def stream_turn(session: ChatSession, question: str, subject: str | None, *, wak
         if isinstance(item, BaseException):
             yield TurnUpdate(friendly_error(item), FAILED, elapsed=elapsed)
             continue                      # the _END marker follows
+        if isinstance(item, Progress):
+            working = True
+            yield TurnUpdate(f"_{item.text}_", WORKING, elapsed=elapsed)
+            continue
         if isinstance(item, ChatAnswer):
             yield TurnUpdate(render_answer(item), DONE, item, elapsed)
             continue
@@ -123,6 +130,8 @@ def _body_and_notes(answer: ChatAnswer) -> tuple[str, list[str]]:
 
 def render_answer(answer: ChatAnswer) -> str:
     """The final message: the answer, then what the program (not the model) wants the student to know."""
+    if answer.status == NEEDS_CHOICE:
+        return answer.text
     if answer.status == NOT_IN_PAPERS_STATUS:
         lines = ["**Not in your papers.**", "", answer.text]
         if answer.refusal_reason:

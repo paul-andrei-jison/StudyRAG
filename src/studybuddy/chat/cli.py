@@ -16,7 +16,7 @@ from ..errors import ChatContextError, StudyBuddyError, TransientLLMError
 from ..index.index import Index
 from ..ingest.subjects import SubjectError, SubjectList
 from ..llm import LMStudioClient
-from .answers import ChatAnswer, NOT_IN_PAPERS_STATUS, Source
+from .answers import NEEDS_CHOICE, ChatAnswer, NOT_IN_PAPERS_STATUS
 from .session import ChatConfig, ChatSession
 
 HELP = """Commands:
@@ -81,16 +81,18 @@ def _show(answer: ChatAnswer, out: TextIO, show_scores: bool, streamed: bool) ->
         print(f"[searched for] {answer.query}", file=out)
     if answer.status == NOT_IN_PAPERS_STATUS and answer.refusal_reason:
         print(f"[why] {answer.refusal_reason}", file=out)
-    print(format_sources(answer, show_scores), file=out)
+    if answer.status != NEEDS_CHOICE:
+        print(format_sources(answer, show_scores), file=out)
 
 
 def _ask(session: ChatSession, question: str, out: TextIO, stream: bool, show_scores: bool) -> bool:
     """Ask one question and print everything. Returns False if it failed."""
     try:
         if stream:
-            final = session.ask(question, on_token=lambda piece: print(piece, end="", file=out, flush=True))
+            final = session.ask(question, on_token=lambda piece: print(piece, end="", file=out, flush=True),
+                                on_progress=lambda note: print(f"[{note}]", file=out, flush=True))
         else:
-            final = session.ask(question)
+            final = session.ask(question, on_progress=lambda note: print(f"[{note}]", file=out, flush=True))
     except ChatContextError as exc:
         print(f"\n[FAIL] {exc}", file=out)
         return False

@@ -2,7 +2,7 @@ import pytest
 
 from studybuddy.chat.budget import TokenEstimator
 from studybuddy.chat.condense import (CONDENSED, FULL, MAX_CONDENSE_PAGES, MIN_PAGE_TOKENS, SUMMARY, condense_page,
-                                      condense_pages, plan_document)
+                                      plan_document)
 from studybuddy.errors import LLMError, TransientLLMError
 
 
@@ -75,12 +75,3 @@ def test_a_model_error_falls_back_but_an_unavailable_model_is_reported():
     assert condense_page(Chat(error=LLMError("bad reply")), PAGE, 200, EST).fell_back
     with pytest.raises(TransientLLMError):
         condense_page(Chat(error=TransientLLMError("LM Studio is off")), PAGE, 200, EST)
-
-
-def test_condensing_a_document_counts_calls_and_reports_progress():
-    chat = Chat("points")
-    seen = []
-    texts = [PAGE, "tiny", PAGE, PAGE]
-    out, calls, fallbacks = condense_pages(chat, texts, 300, EST, progress=lambda n, total: seen.append((n, total)))
-    assert out == ["points", "tiny", "points", "points"] and calls == 3 and fallbacks == 0
-    assert seen == [(1, 4), (2, 4), (3, 4), (4, 4)] and len(chat.calls) == 3

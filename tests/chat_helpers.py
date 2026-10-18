@@ -75,12 +75,12 @@ class Setup:
         return ChatSession(self.index, client, self.settings, **kw)
 
 
-def add_doc(index, key, text, subject="Science", title=None, pages=None, quality=0.95, flags=(), path=None):
+def add_doc(index, key, text, subject="Science", title=None, pages=None, quality=0.95, flags=(), path=None, summary=""):
     """Index one document. `pages` is a list of texts (one page each); default is a single page of `text`."""
     texts = pages or [text]
     path = path or f"C:/lib/{subject}/{key}.jpg"
     records = [PageRecord(i, path, "image", text=t, quality=quality, flags=list(flags)) for i, t in enumerate(texts, 1)]
-    return index.add_document(DocumentMeta(key, path, "photo", subject, title or key.title()), records)
+    return index.add_document(DocumentMeta(key, path, "photo", subject, title or key.title(), summary), records)
 
 
 def make_setup(settings, tmp_path) -> Setup:

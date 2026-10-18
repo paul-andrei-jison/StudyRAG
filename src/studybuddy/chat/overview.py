@@ -17,7 +17,7 @@ _DOC = (r"papers?|handouts?|worksheets?|activity sheets?|sheets?|quiz(?:zes)?|te
         r"articles?|documents?|files?|pages?|pdfs?|chapters?|modules?|activit(?:y|ies)|readings?|assignments?|materials?|"
         r"photos?|pictures?|images?|papel|aralin|dokumento|pagsusulit|sulatin|babasahin")
 _WHOLE = r"entire|whole|everything|complete|full|all of it|buong|buo|lahat|ito|nito|iyan|niyan|iyon|this|these|that|those"
-_FILLER = (r"give|gimme|tell|show|write|make|list|explain|describe|down|please|pls|paki|po|can|could|you|would|want|need|me|my|mo|ko|akin|ang|ng|sa|na|ay|mga|"
+_FILLER = (r"topics?|subjects?|things|parts?|concepts?|ideas?|covers?|covered|contains?|includes?|including|discuss(?:es|ed)?|says?|laman|nilalaman|nasa|nakasulat|nandito|nandiyan|paksa|tungkol|about|have|has|give|gimme|tell|show|write|make|list|explain|describe|down|please|pls|paki|po|can|could|you|would|want|need|me|my|mo|ko|akin|ang|ng|sa|na|ay|mga|"
            r"and|also|of|for|to|in|on|a|an|the|is|are|it|its|do|does|ano|ang|ba|yung|'yung|saan|sino|"
            r"summar\w*|ize|ise|i")
 

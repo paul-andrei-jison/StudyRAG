@@ -169,3 +169,38 @@ def test_markdown_in_a_page_cannot_change_the_label_list(setup):
     # labels are plain strings for a Radio; the page text goes to a plain textbox, never to markdown
     assert all(isinstance(label, str) for label, _ in source_choices(updates[-1].answer))
     assert render_answer(updates[-1].answer).count("<script>") == 0
+
+
+# ---- overview questions ---------------------------------------------------------------------------
+
+def test_condensing_shows_progress_and_never_the_waking_message(setup):
+    from studybuddy.ui.chat import WORKING
+    add_doc(setup.index, "long", "", subject="Math", title="Long reviewer",
+            pages=[" ".join(f"Sentence {i} explains idea {i} about the planet in detail." for i in range(60)) for _ in range(4)])
+
+    class Slow(ScriptedClient):
+        def chat(self, messages, temperature=0.0, max_tokens=None):
+            import time
+            time.sleep(0.12)
+            return "short points"
+
+    names = SubjectList(setup.settings.data_dir / "subjects.json", ["Science", "Math"])
+    client = Slow([["Short points ", "[1]", "."]], context=2400)
+    session = setup.session(client, subjects=names)
+    updates = list(stream_turn(session, "summarize this reviewer", "Math", wake_after=0.05, search_after=0.01, poll=0.02))
+    phases = [u.phase for u in updates]
+    assert WORKING in phases and WAKING not in phases[phases.index(WORKING):]
+    assert any("Summarizing page 2 of 4 of 'Long reviewer'" in u.text for u in updates if u.phase == WORKING)
+    assert updates[-1].phase == DONE and updates[-1].answer.mode == "overview"
+    assert "summarized each page first" in updates[-1].text
+
+
+def test_which_paper_is_shown_as_plain_text_with_no_sources(setup):
+    for key in ("rocks", "weather"):
+        add_doc(setup.index, key, f"{key} are interesting to study.", title=f"About {key}")
+    session = setup.session(ScriptedClient())
+    updates = list(stream_turn(session, "give me a summary of the entire paper", None))
+    final = updates[-1]
+    assert final.phase == DONE and final.answer.status == "needs_choice"
+    assert final.text.startswith("Which paper do you mean?") and "About weather" in final.text
+    assert source_choices(final.answer) == [] and sources_caption(final.answer) == "No sources."

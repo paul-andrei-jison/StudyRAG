@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Sequence
 
 from ..errors import LLMError, TransientLLMError
 from ..ingest.metadata import Chats
@@ -87,17 +87,3 @@ def condense_page(chat: Chats, text: str, limit: int, estimator: TokenEstimator)
         return Condensed(_cut(flat, limit), True, True)
     return Condensed(_cut(cleaned, limit), True)
 
-
-def condense_pages(chat: Chats, texts: Sequence[str], limit: int, estimator: TokenEstimator,
-                   progress: Callable[[int, int], None] | None = None) -> tuple[list[str], int, int]:
-    """(condensed texts in page order, model calls made, pages that fell back to plain shortening)."""
-    out: list[str] = []
-    calls = fallbacks = 0
-    for number, text in enumerate(texts, 1):
-        if progress:
-            progress(number, len(texts))
-        result = condense_page(chat, text, limit, estimator)
-        out.append(result.text)
-        calls += result.called
-        fallbacks += result.fell_back
-    return out, calls, fallbacks

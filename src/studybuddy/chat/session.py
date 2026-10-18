@@ -6,6 +6,7 @@ budget, stream the answer, validate the citations, and add the notes the model c
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -15,16 +16,21 @@ from ..config import Settings
 from ..errors import ChatContextError, ContextOverflowError, TransientLLMError
 from ..index.index import Index
 from ..index.search import Hit
+from ..index.store import DocumentRow
+from ..ingest.results import IGNORED_FLAGS
 from ..ingest.subjects import SubjectError, SubjectList
 from ..llm import StreamEnd
-from .answers import ANSWERED, ERROR, NOT_IN_PAPERS_STATUS, ChatAnswer, Source
+from .answers import ANSWERED, ERROR, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, OVERVIEW, ChatAnswer, Progress, Source
 from .budget import TokenEstimator, minimum_context, plan_budget, resolve_context_tokens, too_small
+from .condense import CONDENSED, SUMMARY, condense_page, plan_document
 from .citations import CitationFilter
 from .expand import expand_query, fuse_searches
-from .gate import Assessment, GateConfig, assess, coverage
-from .prompt import NOT_IN_PAPERS, SYSTEM_PROMPT, build_messages, format_source
+from .gate import GateConfig, assess, coverage
+from .overview import detect
+from .prompt import NOT_IN_PAPERS, OVERVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT, build_messages, format_source
 from .rewrite import Turn, rewrite_query
 from .select import PER_DOCUMENT, PER_PAGE, SOURCE_COUNT, spread
+from .targets import ASK, DOCUMENTS, Resolution, match_choice, resolve_targets
 
 REFUSAL_TEXT = "Your papers don't seem to cover this question, so I won't guess."
 CLOSEST_SOURCES = 3
@@ -32,6 +38,8 @@ LIKELY_SOURCE_COVERAGE = 0.6   # share of the answer's content words a source mu
 HANDWRITING_QUESTION = re.compile(
     r"\b(name|names|date|dates|score|scores|section|teacher|grade|answer key|which letter|what letter|my answers?|i answered|who wrote)\b",
     re.IGNORECASE)
+MIN_DOC_TOKENS = 200        # each document in an overview needs at least this much room in the context
+HEADING_RESERVE = 60
 HANDWRITING_NOTE = "Handwritten names, dates, scores and answer letters may be read wrongly: check them against the photo."
 
 
@@ -94,6 +102,7 @@ class ChatSession:
         self.last_answer: ChatAnswer | None = None
         self._subject: str | None = None
         self._context: int | None = self.config.context_tokens
+        self._pending: tuple[str, Resolution] | None = None   # an overview question waiting for the answer to "which paper?"
 
     # ---- state -----------------------------------------------------------------------------
 
@@ -118,6 +127,7 @@ class ChatSession:
         """Forget the conversation (the subject filter stays)."""
         self.history.clear()
         self.last_answer = None
+        self._pending = None
 
     def context_tokens(self) -> int:
         if self._context is None:
@@ -132,18 +142,22 @@ class ChatSession:
 
     # ---- asking ----------------------------------------------------------------------------
 
-    def ask(self, question: str, on_token: Callable[[str], None] | None = None) -> ChatAnswer:
+    def ask(self, question: str, on_token: Callable[[str], None] | None = None,
+            on_progress: Callable[[str], None] | None = None) -> ChatAnswer:
         final: ChatAnswer | None = None
         for item in self.ask_stream(question):
             if isinstance(item, ChatAnswer):
                 final = item
+            elif isinstance(item, Progress):
+                if on_progress:
+                    on_progress(item.text)
             elif on_token:
                 on_token(item)
         assert final is not None
         return final
 
-    def ask_stream(self, question: str) -> Iterator[str | ChatAnswer]:
-        """Yield the answer text piece by piece, then the final ChatAnswer."""
+    def ask_stream(self, question: str) -> Iterator[str | Progress | ChatAnswer]:
+        """Yield the answer text piece by piece (and Progress notices while pages are condensed), then the final ChatAnswer."""
         question = " ".join(question.split())
         if not question:
             raise ValueError("The question is empty.")
@@ -156,7 +170,38 @@ class ChatSession:
         if context < needed:
             raise too_small(context, needed, reserve)
 
+        target = None
+        asked_question = question
+        if self._pending is not None:
+            asked_question, pending = self._pending
+            choice = match_choice(question, pending)
+            if choice.kind == "chosen":
+                self._pending = None
+                target = Resolution(DOCUMENTS, [choice.doc], "chosen")
+            elif choice.ask is not None:     # still not clear which paper: ask again (same list, or the narrower one)
+                self._pending = (asked_question, choice.ask)
+                yield from self._ask_which(question, choice.ask, started, context)
+                return
+            else:
+                self._pending = None         # not an answer to the question: carry on as an ordinary question
+                asked_question = question
+
         rewrite = rewrite_query(self.client, self.history[-self.config.history_turns:], question)
+        if target is None:
+            found = detect(question)
+            if not found.is_overview and rewrite.rewritten:
+                found = detect(rewrite.query)
+            if found.is_overview:
+                resolved = resolve_targets(found, f"{question} {rewrite.query}", self.index.documents(), self._subject)
+                if resolved.kind == ASK:
+                    self._pending = (question, resolved)
+                    yield from self._ask_which(question, resolved, started, context)
+                    return
+                if resolved.kind == DOCUMENTS:
+                    target = resolved
+        if target is not None:
+            yield from self._overview(asked_question, target, context, reserve, started)
+            return
         hits = self._retrieve(rewrite.query)
         chosen = spread(hits, self.config.source_count, self.config.per_page, self.config.per_document)
         assessment = assess(chosen, rewrite.query, self.gate)
@@ -173,6 +218,74 @@ class ChatSession:
         answer.sources = sources
         messages = build_messages(question, sources, history)
         yield from self._stream_answer(question, messages, answer, started)
+
+    # ---- overview questions: answered from whole documents ---------------------------------------
+
+    def _ask_which(self, question: str, asking: Resolution, started: float, context: int) -> Iterator[str | ChatAnswer]:
+        answer = ChatAnswer(text=asking.text, status=NEEDS_CHOICE, query=question, subject_filter=self._subject,
+                            context_tokens=context, mode=OVERVIEW)
+        answer.total_seconds = round(self.clock() - started, 2)
+        self.last_answer = answer
+        yield asking.text
+        yield answer
+
+    def _overview(self, question: str, target: Resolution, context: int, reserve: int,
+                  started: float) -> Iterator[str | Progress | ChatAnswer]:
+        """Answer from the pages of the chosen documents in order; no gate (the question is about whole documents, not a fact)."""
+        answer = ChatAnswer(text="", status=ANSWERED, query=question, subject_filter=self._subject, context_tokens=context,
+                            mode=OVERVIEW)
+        system_tokens = self.estimator.estimate(OVERVIEW_SYSTEM_PROMPT)
+        available = context - reserve - system_tokens - self.estimator.estimate(question)
+        if available < len(target.docs) * MIN_DOC_TOKENS:
+            raise too_small(context, reserve + system_tokens + len(target.docs) * MIN_DOC_TOKENS, reserve)
+        share = available // len(target.docs)
+        sources: list[Source] = []
+        for doc in target.docs:
+            pages = self.index.store.pages(doc.id)
+            if not pages:
+                continue
+            drafts = [self._page_source(doc, p) for p in pages]
+            plan = plan_document(share, [self.estimator.estimate(format_source(d)) for d in drafts], self.estimator)
+            if plan.tier == CONDENSED:
+                answer.overview_notes.append(
+                    f"'{doc.title}' has {len(drafts)} pages, so I summarized each page first, then combined them; fine details may be missing.")
+                fallbacks = 0
+                for number, draft in enumerate(drafts, 1):
+                    yield Progress(f"Summarizing page {number} of {len(drafts)} of '{doc.title}' first...")
+                    result = condense_page(self.client, draft.text, plan.page_chars, self.estimator)
+                    draft.text = result.text
+                    answer.model_calls_condensing += result.called
+                    fallbacks += result.fell_back
+                if fallbacks:
+                    answer.overview_notes.append(f"{fallbacks} page(s) of '{doc.title}' could not be summarized and were only shortened.")
+            elif plan.tier == SUMMARY:
+                text = (doc.summary or "").strip() or drafts[0].text
+                limit = self.estimator.chars_for(share - HEADING_RESERVE)
+                drafts = drafts[:1]
+                drafts[0].text = text if len(text) <= limit else text[:limit].rstrip() + " ..."
+                answer.overview_notes.append(
+                    f"'{doc.title}' is too long to read at once ({doc.page_count} pages), so this uses its stored summary only; "
+                    f"details are missing. Ask about a specific part for more.")
+            sources.extend(drafts)
+        if not sources:
+            yield from self._refuse(question, answer, [], "the chosen papers have no readable pages", started)
+            return
+        for number, source in enumerate(sources, 1):
+            source.number = number
+        titles = "; ".join(f"'{d.title or d.file_path}' ({d.page_count} page{'s' if d.page_count != 1 else ''})" for d in target.docs)
+        answer.overview_notes.insert(0, f"This is an overview of {titles}, not an answer found on one page.")
+        answer.sources = sources
+        messages = build_messages(question, sources, [], system=OVERVIEW_SYSTEM_PROMPT)
+        yield from self._stream_answer(question, messages, answer, started)
+
+    @staticmethod
+    def _page_source(doc: DocumentRow, page) -> Source:
+        try:
+            flags = [f for f in json.loads(page["flags"] or "[]") if f not in IGNORED_FLAGS]
+        except ValueError:
+            flags = []
+        return Source(0, doc.subject, doc.title, doc.file_path, page["page_number"], page["image_path"], page["text"] or "",
+                      page["quality"], flags)
 
     # ---- steps -----------------------------------------------------------------------------
 
@@ -296,8 +409,8 @@ class ChatSession:
         yield answer
 
     def _notes(self, question: str, answer: ChatAnswer, body: str = "") -> list[str]:
-        notes: list[str] = []
-        cited = answer.cited_sources
+        notes: list[str] = list(answer.overview_notes)
+        cited = answer.sources if answer.mode == OVERVIEW else answer.cited_sources   # a summary draws on every page it was given
         for source in cited:
             if source.hard_to_read:
                 why = f" ({'; '.join(source.problems)})" if source.problems else ""
@@ -310,7 +423,7 @@ class ChatSession:
                              f"('{likely.title or likely.file_path}', page {likely.page_number}). Check it against that page.")
             else:
                 notes.append("Note: no source was cited for this answer, so check it against your papers.")
-        if cited and HANDWRITING_QUESTION.search(question):  # the question is about the kind of field that is handwritten
+        if answer.cited and HANDWRITING_QUESTION.search(question):  # the question is about the kind of field that is handwritten
             notes.append(HANDWRITING_NOTE)
         return notes
 
