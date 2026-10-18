@@ -205,10 +205,10 @@ def test_failed_documents_are_listed_and_retry_requeues_them(tmp_path, settings)
         assert outcome.tickets[0].result(timeout=30).status == "failed"
         snap = board.snapshot()
         assert len(snap.failed) == 1 and "reader exploded" in snap.failed[0] and "failed" in snap.headline()
-        assert board.retry_failed().startswith("Requeued 1 of 1")
+        assert board.retry_failed() == "Trying it again."
         assert service.wait_idle(30)
         assert len(env.index.documents()) == 1 and board.snapshot().failed == []
-        assert board.retry_failed() == "Nothing has failed."
+        assert board.retry_failed() == "Nothing needs a look."
     finally:
         service.stop()
         env.index.close()
@@ -224,5 +224,5 @@ def test_an_unreadable_reason_file_is_still_listed_and_a_missing_file_cannot_be_
     (gone / "reason.json").write_text(json.dumps({"files": [str(gone / "missing.jpg")], "error": "bad"}), encoding="utf-8")
     snap = board.snapshot()
     assert len(snap.failed) == 2 and any("unreadable" in f for f in snap.failed)
-    assert "could not be requeued" in board.retry_failed()
+    assert "could not be tried again" in board.retry_failed()
     env.index.close()

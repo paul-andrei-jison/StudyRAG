@@ -21,6 +21,21 @@ class StatusSnapshot:
     deferred: list[str] = field(default_factory=list)    # LM Studio was unavailable: waiting for a retry
     failed: list[str] = field(default_factory=list)      # kept in failed/ with the reason
     recent: list[str] = field(default_factory=list)      # newest first, one block per document
+    failed_names: list[str] = field(default_factory=list)     # file names only (the reasons are in `failed`)
+    deferred_names: list[str] = field(default_factory=list)
+
+    def pill(self) -> str:
+        """The short text for the corner indicator; empty when there is nothing to say."""
+        if self.deferred_names:
+            return "Waiting for LM Studio"
+        if self.failed_names:
+            n = len(self.failed_names)
+            return f"{n} need{'s' if n == 1 else ''} a look"
+        busy = len(self.running) + len(self.queued)
+        return f"{busy} being read" if busy else ""
+
+    def retry_possible(self) -> bool:
+        return bool(self.failed_names)
 
     def headline(self) -> str:
         parts = [f"{len(self.running)} reading", f"{len(self.queued)} queued", f"{len(self.deferred)} waiting to retry",
@@ -77,9 +92,11 @@ class StatusBoard:
             elif job.attempts > 0:
                 wait = max(0, int(job.next_retry_at - now))
                 snap.deferred.append(f"{names} - {job.last_error or 'LM Studio unavailable'} (retry in {wait} s, attempt {job.attempts})")
+                snap.deferred_names.append(names)
             else:
                 snap.queued.append(names)
         snap.failed = [text for _, text in self.failed_reasons()]
+        snap.failed_names = [text.split(" - ", 1)[0] for text in snap.failed]
         with self._lock:
             snap.recent = list(self._recent)
         return snap
@@ -87,8 +104,10 @@ class StatusBoard:
     def retry_failed(self) -> str:
         before = len(self.failed_reasons())
         if not before:
-            return "Nothing has failed."
+            return "Nothing needs a look."
         tickets = self.service.retry_failed()
         if not tickets:
-            return f"{before} failed document(s) could not be requeued (their files are missing from the failed folder)."
-        return f"Requeued {len(tickets)} of {before} failed document(s)."
+            return "These could not be tried again because their files are missing. Add them again on the Add screen."
+        if len(tickets) < before:
+            return f"Trying {len(tickets)} of {before} again. The rest are missing their files; add them again on the Add screen."
+        return f"Trying {before} again." if before > 1 else "Trying it again."

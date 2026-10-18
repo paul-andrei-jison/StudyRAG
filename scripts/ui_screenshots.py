@@ -28,7 +28,7 @@ JS_OVERFLOW = "() => document.documentElement.scrollWidth - document.documentEle
 JS_SMALL_TARGETS = """
 (min) => [...document.querySelectorAll('#sb-root button, #sb-root [role=tab], #sb-root a[href], #sb-root input:not([type=hidden]):not([type=file]), #sb-root textarea')]
   .filter(e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
-                 return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && (r.height < min - 0.5 || r.width < min - 0.5); })
+                 return !e.closest('.visually-hidden') && r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && (r.height < min - 0.5 || r.width < min - 0.5); })
   .map(e => (e.id || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().slice(0, 40) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height))
 """
 
@@ -116,7 +116,42 @@ def scene_add_done(page, demo):
     page.wait_for_timeout(500)
 
 
+def submit_demo_files(demo, count: int = 1):
+    from ui_demo import draw_page
+    for number in range(count):
+        photo = draw_page(demo.root / "incoming" / f"new-{number}.jpg", f"New page {number}", ["A page that is being read."])
+        demo.rt.service.submit([photo], subject="Math", source_kind="photo")
+
+
+def open_activity(page):
+    page.wait_for_selector("#sb-pill", state="visible", timeout=20000)
+    page.locator("#sb-pill").click()
+    page.wait_for_selector("#sb-activity", state="visible", timeout=10000)
+    page.wait_for_timeout(500)
+
+
+def scene_activity_reading(page, demo):
+    submit_demo_files(demo, 2)
+    open_activity(page)
+
+
+def scene_activity_failed(page, demo):
+    submit_demo_files(demo, 1)
+    demo.rt.service.wait_idle(30)
+    open_activity(page)
+    page.get_by_text("Technical details").click()
+    page.wait_for_timeout(400)
+
+
+def scene_activity_waiting(page, demo):
+    submit_demo_files(demo, 1)
+    open_activity(page)
+
+
 SCENES = {
+    "activity-reading": scene_activity_reading,
+    "activity-failed": scene_activity_failed,
+    "activity-waiting": scene_activity_waiting,
     "add-done": scene_add_done,
     "library-paper": scene_library_paper,
     "library-remove": scene_library_remove,
@@ -160,7 +195,8 @@ def run(out: Path, only: list[str] | None, variant: str | None = None) -> int:
                         failures += [f"{name} {size_name} {mode}"] if done.returncode else []
                         continue
                     root = Path(tmp) / f"{name}-{size_name}-{mode}"
-                    demo = build_demo(root, papers=name != "empty-library", busy=name.startswith("activity"),
+                    demo = build_demo(root, papers=name != "library-empty", busy=name == "activity-reading",
+                                      reader="down" if name == "activity-waiting" else "fails",
                                       host="0.0.0.0" if name == "banner" else "127.0.0.1")
                     context = browser.new_context(viewport={"width": width, "height": height}, color_scheme=mode, device_scale_factor=1)
                     page = context.new_page()

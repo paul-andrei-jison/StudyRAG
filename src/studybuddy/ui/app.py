@@ -15,7 +15,7 @@ from ..config import network_exposure
 from ..errors import StudyBuddyError
 from .chat import DONE, source_choices, source_details, sources_caption, stream_turn
 from .library import filter_rows
-from .markup import esc, greeting, library_empty, paper_head_html, papers_html, suggest_questions
+from .markup import activity_html, esc, greeting, library_empty, paper_head_html, papers_html, suggest_questions
 from .offline import StripExternalScripts
 from .runtime import Runtime
 from .theme import THEME_JS, build_theme, css
@@ -73,29 +73,45 @@ def build_app(rt: Runtime) -> gr.Blocks:
         with gr.Row(elem_id="sb-header"):
             gr.HTML("<span id='sb-wordmark'>Study Buddy</span>", padding=False)
             with gr.Row(elem_id="sb-tools"):
+                pill = gr.Button("", elem_id="sb-pill", variant="secondary", visible=False)
                 gr.Button("◐", elem_id="sb-theme", variant="secondary", min_width=44)
 
-        # ---- status panel (every tab) ---------------------------------------------------------
-        with gr.Accordion("Status", open=True):
-            headline = gr.Markdown("Status: ...")
-            with gr.Accordion("Details", open=False):
-                jobs_box = gr.Textbox(label="Jobs", lines=4, interactive=False)
+        # ---- activity: a small indicator in the corner that opens a plain panel ----------------------
+        activity_open = gr.State(False)
+        with gr.Column(elem_id="sb-activity", visible=False) as activity_panel:
+            gr.HTML("<h2>Activity</h2>", padding=False)
+            activity_body = gr.HTML(padding=False)
+            retry_btn = gr.Button("Retry", visible=False, variant="primary", elem_id="sb-retry")
+            retry_msg = gr.HTML(elem_id="sb-retry-msg", padding=False)
+            close_btn = gr.Button("Close", size="sm", variant="secondary", elem_id="sb-close")
+            with gr.Accordion("Technical details", open=False, elem_id="sb-tech"):
+                headline = gr.Markdown()
+                jobs_box = gr.Textbox(label="Queue", lines=4, interactive=False)
                 recent_box = gr.Textbox(label="Latest results", lines=6, interactive=False)
-                retry_btn = gr.Button("Retry failed")
-                retry_msg = gr.Markdown()
         timer = gr.Timer(TIMER_SECONDS)
 
         def status():
             snap = rt.board.snapshot()
             return snap.headline(), snap.jobs_text(), snap.recent_text()
 
-        def retry_failed():
-            message = rt.board.retry_failed()
-            return (message, *status())
+        def activity_view(is_open):
+            """The corner indicator, the panel and its contents. Nothing to say means no indicator and a closed panel."""
+            snap = rt.board.snapshot()
+            text = snap.pill()
+            show = bool(is_open and text)
+            return (gr.update(value=text, visible=bool(text)), gr.update(visible=show), activity_html(snap),
+                    gr.update(visible=snap.retry_possible()), snap.headline(), snap.jobs_text(), snap.recent_text(), show)
+
+        def retry_failed(is_open):
+            outcome = rt.board.retry_failed()
+            return (say(outcome), *activity_view(is_open))
 
         status_outputs = [headline, jobs_box, recent_box]
-        timer.tick(status, outputs=status_outputs, api_name=False, show_progress="hidden")
-        retry_btn.click(retry_failed, outputs=[retry_msg, *status_outputs], api_name="retry_failed")
+        view_outputs = [pill, activity_panel, activity_body, retry_btn, headline, jobs_box, recent_box, activity_open]
+        timer.tick(activity_view, [activity_open], view_outputs, api_name=False, show_progress="hidden")
+        pill.click(lambda is_open: activity_view(not is_open), [activity_open], view_outputs, api_name=False, show_progress="hidden")
+        close_btn.click(lambda: activity_view(False), None, view_outputs, api_name=False, show_progress="hidden")
+        retry_btn.click(retry_failed, [activity_open], [retry_msg, *view_outputs], api_name="retry_failed")
 
         with gr.Tabs(elem_id="sb-tabs") as tabs:
             # ---- ask -------------------------------------------------------------------------------
@@ -348,9 +364,9 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 upload_tab.select(refresh_upload_subject, [up_subject], [up_subject], api_name=False)
 
         add_first_btn.click(lambda: gr.Tabs(selected="add"), None, [tabs], api_name=False)
-        demo.load(lambda: (*status(), refresh_filter(None), refresh_filter(None), refresh_upload_subject(None),
+        demo.load(lambda: (*activity_view(False), refresh_filter(None), refresh_filter(None), refresh_upload_subject(None),
                            *lib_list(None, ""), greeting(), *example_updates()),
-                  outputs=[*status_outputs, chat_subject, lib_filter, up_subject, *list_outputs, hello, *example_outputs], api_name=False)
+                  outputs=[*view_outputs, chat_subject, lib_filter, up_subject, *list_outputs, hello, *example_outputs], api_name=False)
 
         # Plain endpoints for scripts and tests (gradio_client); the buttons are never shown.
         status_api = gr.Button(visible=False)

@@ -93,3 +93,28 @@ def test_the_paper_view_explains_each_hard_page_in_plain_words():
     html = paper_head_html(detail)
     assert "Added 18 Oct 2026" in html and "2 pages" in html and "How water moves." in html
     assert "Page 2 was hard to read: many words are unreadable. Check it against the photo." in html and "Page 1 was" not in html
+
+
+# ---- Activity ------------------------------------------------------------------------------------------------------
+
+from studybuddy.ui.markup import activity_html
+from studybuddy.ui.status import StatusSnapshot
+
+
+def test_the_corner_text_is_plain_and_ranked_by_what_needs_attention():
+    assert StatusSnapshot().pill() == ""
+    assert StatusSnapshot(running=["a.jpg"], queued=["b.jpg"]).pill() == "2 being read"
+    assert StatusSnapshot(running=["a.jpg"], failed_names=["x.jpg"]).pill() == "1 needs a look"
+    assert StatusSnapshot(failed_names=["x.jpg", "y.jpg"]).pill() == "2 need a look"
+    assert StatusSnapshot(running=["a.jpg"], failed_names=["x.jpg"], deferred_names=["z.jpg"]).pill() == "Waiting for LM Studio"
+    assert StatusSnapshot(failed_names=["x"]).retry_possible() and not StatusSnapshot(running=["a"]).retry_possible()
+
+
+def test_the_panel_says_what_to_do_and_hides_technical_words():
+    snap = StatusSnapshot(deferred=["z.jpg - connection refused (retry in 30 s, attempt 2)"], deferred_names=["z.jpg"],
+                          failed=["x.jpg - RuntimeError: boom"], failed_names=["x.jpg"], running=["a.jpg"])
+    html = activity_html(snap)
+    assert "Open LM Studio, load the models and start its server" in html and "Being read now" in html and "Needs a look" in html
+    for internal in ("connection refused", "RuntimeError", "attempt", "queued", "job"):
+        assert internal not in html
+    assert "All caught up" in activity_html(StatusSnapshot()) and "&lt;" in activity_html(StatusSnapshot(running=["<b>.jpg"]))

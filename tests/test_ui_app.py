@@ -174,8 +174,8 @@ def test_failed_documents_can_be_retried_from_the_status_panel(tmp_path, setting
         assert app.service.wait_idle(30)
         headline, jobs, recent = app.client.predict(api_name="/status")
         assert "1 failed" in headline and "reader exploded" in jobs
-        text, headline, *_ = app.client.predict(api_name="/retry_failed")
-        assert text.startswith("Requeued 1 of 1") and app.service.wait_idle(30)
+        text, _body, headline, *_ = app.client.predict(api_name="/retry_failed")
+        assert "Trying it again." in text and app.service.wait_idle(30)
         assert len(app.env.index.documents()) == 1
     finally:
         app.close()

@@ -141,7 +141,8 @@ def demo_settings(root: Path) -> Settings:
                     tag_timeout_seconds=300, telegram_token=None, telegram_user_id=None, chat_expand_queries=False)
 
 
-def build_demo(root: Path, *, papers: bool = True, host: str = "127.0.0.1", port: int | None = None, busy: bool = False) -> Demo:
+def build_demo(root: Path, *, papers: bool = True, host: str = "127.0.0.1", port: int | None = None, busy: bool = False,
+               reader: str = "fails") -> Demo:
     from studybuddy.ui.app import build_app, launch
 
     settings = demo_settings(root)
@@ -161,12 +162,21 @@ def build_demo(root: Path, *, papers: bool = True, host: str = "127.0.0.1", port
                 records.append(PageRecord(number, str(image), "image", text=" ".join(page_lines), quality=quality, flags=list(flags)))
             index.add_document(DocumentMeta(key, path, "photo", subject, title, summary), records)
     release = threading.Event() if busy else None
-    service = IngestService(settings, index, SlowReader(release) if busy else _NoReader(), None, DemoClient(), subjects, poll_interval=0.05)
+    the_reader = SlowReader(release) if busy else _DownReader() if reader == "down" else _NoReader()
+    service = IngestService(settings, index, the_reader, None, DemoClient(), subjects, poll_interval=0.05)
     rt = Runtime(settings, DemoClient(), index, subjects, service, gate=LAX_GATE)
     rt.start()
     demo = build_app(rt)
     _, url, _ = launch(demo, host, port, prevent_thread_lock=True)
     return Demo(root, rt, demo, url, release)
+
+
+class _DownReader:
+    """LM Studio is not running: every read is a temporary failure, so the paper waits and retries by itself."""
+
+    def transcribe(self, image):
+        from studybuddy.errors import TransientLLMError
+        raise TransientLLMError("connection refused")
 
 
 class _NoReader:

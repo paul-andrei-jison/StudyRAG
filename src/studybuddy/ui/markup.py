@@ -128,3 +128,27 @@ def paper_head_html(detail) -> str:
             parts.append(f"<p class='sb-note' role='note'><span aria-hidden='true'>&#9888;</span> Page {page.page_number} was hard to read: "
                          f"{esc(why)}. Check it against the photo.</p>")
     return "<div class='sb-paper-head'>" + "".join(parts) + "</div>"
+
+
+# ---- Activity -----------------------------------------------------------------------------------------------------------
+
+def activity_html(snap) -> str:
+    """The plain-words panel behind the corner indicator. Technical details live elsewhere (the 'Technical details' section)."""
+    def block(title: str, names: Sequence[str], note: str = "") -> str:
+        items = "".join(f"<li>{esc(n)}</li>" for n in names)
+        hint = f"<p class='sb-muted'>{esc(note)}</p>" if note else ""
+        return f"<section><h3>{esc(title)}</h3><ul>{items}</ul>{hint}</section>"
+
+    parts = []
+    if snap.deferred_names:
+        parts.append(block("Waiting for LM Studio", snap.deferred_names,
+                           "Open LM Studio, load the models and start its server. Waiting papers carry on by themselves."))
+    if snap.running:
+        parts.append(block("Being read now", snap.running))
+    if snap.queued:
+        parts.append(block("Next in line", snap.queued))
+    if snap.failed_names:
+        parts.append(block("Needs a look", snap.failed_names, "These could not be read. Try again, or add a clearer photo."))
+    if not parts:
+        parts.append("<p class='sb-muted'>All caught up. Nothing is being read.</p>")
+    return "<div class='sb-activity-body'>" + "".join(parts) + "</div>"
