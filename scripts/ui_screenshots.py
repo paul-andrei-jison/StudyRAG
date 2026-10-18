@@ -148,7 +148,13 @@ def scene_activity_waiting(page, demo):
     open_activity(page)
 
 
+def scene_banner(page, demo):
+    tab(page, "Ask")
+    page.wait_for_selector(".sb-warning", state="visible", timeout=10000)
+
+
 SCENES = {
+    "banner": scene_banner,
     "activity-reading": scene_activity_reading,
     "activity-failed": scene_activity_failed,
     "activity-waiting": scene_activity_waiting,
