@@ -82,7 +82,7 @@ the backoff when the real server was reachable. Searching the filed documents wi
 
 - Photos are read one at a time (one local GPU), about 15-25 s per page plus the title call.
 - Handwriting, tables, formulas and multi-column pages are untested on real photos beyond the bake-off pages.
-- The Telegram bot (chunk 7) must hold the original bytes in `_Unsorted` itself until it calls `submit()`.
+- The Telegram bot (chunk 7) writes every arriving file to `_Unsorted` itself before it calls `submit()` (see `docs/bot.md`).
 
 ## Several files in one submit (checked 2026-10-18; `submit()` now refuses the unsafe case)
 

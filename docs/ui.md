@@ -19,7 +19,7 @@ analytics and no `allowed_paths`.
   **Change subject** moves the file(s) to the new subject's folder and updates the index (see below); **Delete from index** asks for confirmation. If the worker is reading a document the answer is "busy, try again shortly" at once:
   the action is refused, not queued, so it cannot run later by surprise.
 - **Upload**: drop photos or PDFs, pick a subject or Auto-detect (a new name may be typed), tick *album* to make several photos one document (natural file-name order, photos only).
-  Uploads are copied into `SB_DATA_DIR/uploads/` and queued with `IngestService.submit(origin="ui")`, the same call the Telegram bot will use. Gradio refuses file types the tab does not list.
+  Uploads are copied into `SB_DATA_DIR/uploads/` and queued with `IngestService.submit(origin="ui")`, the same call the Telegram bot uses. Gradio refuses file types the tab does not list.
 - **Status** (above the tabs, refreshed every 3 s): reading / queued / waiting-to-retry / failed counts, the lists with reasons, the latest results, and **Retry failed**.
 
 ## Decisions to know
