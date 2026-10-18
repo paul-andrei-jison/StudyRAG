@@ -14,8 +14,8 @@ from ..chat.answers import NEEDS_CHOICE, NOT_IN_PAPERS_STATUS
 from ..config import network_exposure
 from ..errors import StudyBuddyError
 from .chat import DONE, source_choices, source_details, sources_caption, stream_turn
-from .library import TABLE_HEADERS
-from .markup import greeting, suggest_questions
+from .library import filter_rows
+from .markup import esc, greeting, library_empty, paper_head_html, papers_html, suggest_questions
 from .offline import StripExternalScripts
 from .runtime import Runtime
 from .theme import THEME_JS, build_theme, css
@@ -220,42 +220,46 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 chat_tab.select(lambda f: (refresh_filter(f), *example_updates()), [chat_subject], [chat_subject, *example_outputs],
                                 api_name=False)
 
-            # ---- library ---------------------------------------------------------------------
+            # ---- library ---------------------------------------------------------------------------
             with gr.Tab("Library", id="library") as library_tab:
-                with gr.Row():
-                    lib_filter = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, label="Show subject", scale=3,
-                                             allow_custom_value=True)
-                    lib_refresh_btn = gr.Button("Refresh", scale=1)
-                table = gr.Dataframe(headers=TABLE_HEADERS, datatype="str", type="array", interactive=False, wrap=True,
-                                     max_height=320, label="Documents (click a row)")
-                selected_id = gr.Number(label="Selected document ID", precision=0, interactive=True)
-                lib_message = gr.Markdown()
-                with gr.Row():
-                    with gr.Column(scale=2):
-                        detail_box = gr.Textbox(label="Document", lines=9, interactive=False, show_copy_button=True)
-                        with gr.Row():
-                            new_subject = gr.Dropdown(start_names, label="Change subject to", allow_custom_value=True, scale=3)
-                            change_btn = gr.Button("Change subject", scale=1)
-                        delete_btn = gr.Button("Delete from index...", variant="stop")
-                        with gr.Group(visible=False) as confirm_group:
-                            confirm_md = gr.Markdown()
-                            with gr.Row():
-                                confirm_btn = gr.Button("Yes, remove it", variant="stop")
-                                cancel_btn = gr.Button("Cancel")
-                    with gr.Column(scale=3):
-                        page_pick = gr.Dropdown([], label="Page", interactive=True, allow_custom_value=True)
-                        lib_image = gr.Image(type="pil", format="jpeg", interactive=False, label="Original page")
-                        lib_image_note = gr.Markdown()
+                with gr.Column(elem_id="sb-lib"):
+                    with gr.Row(elem_id="sb-lib-bar"):
+                        search = gr.Textbox(placeholder="Search your papers", show_label=False, container=False, lines=1, max_lines=1,
+                                            elem_id="sb-search", scale=3)
+                        lib_filter = gr.Dropdown([ALL_SUBJECTS, *start_names], value=ALL_SUBJECTS, show_label=False, container=False,
+                                                 allow_custom_value=True, elem_id="sb-lib-subject", scale=1, min_width=160)
+                    lib_message = gr.HTML(elem_id="sb-lib-message", padding=False)
+                    with gr.Row(elem_id="sb-lib-body"):
+                        with gr.Column(elem_id="sb-lib-list"):
+                            papers = gr.HTML(elem_id="sb-papers", padding=False)
+                            lib_empty = gr.HTML(elem_id="sb-lib-empty", padding=False)
+                            add_empty_btn = gr.Button("Add papers", variant="primary", visible=False, elem_id="sb-add-empty")
+                        with gr.Column(elem_id="sb-paper", visible=False) as paper_col:
+                            back_btn = gr.Button("Back to papers", size="sm", elem_id="sb-back", variant="secondary")
+                            paper_head = gr.HTML(elem_id="sb-paper-head", padding=False)
+                            with gr.Accordion("More actions", open=False, elem_id="sb-more"):
+                                new_subject = gr.Dropdown(start_names, label="Move to subject", allow_custom_value=True)
+                                change_btn = gr.Button("Change subject")
+                                remove_btn = gr.Button("Remove from Study Buddy", variant="stop")
+                            with gr.Group(visible=False, elem_id="sb-confirm") as confirm_group:
+                                gr.HTML("<p><strong>Remove from Study Buddy?</strong> Your original file stays in your folder.</p>", padding=False)
+                                with gr.Row():
+                                    confirm_btn = gr.Button("Remove", variant="stop")
+                                    keep_btn = gr.Button("Keep it")
+                            page_pick = gr.Radio([], label="Pages", elem_id="sb-pages", interactive=True)
+                            lib_image = gr.Image(type="pil", format="jpeg", interactive=False, show_label=False, container=False,
+                                                 elem_id="sb-paper-image", show_download_button=False, show_fullscreen_button=True)
+                            lib_image_note = gr.HTML(elem_id="sb-paper-note", padding=False)
+                selected_id = gr.Number(visible="hidden", elem_id="sb-pick", precision=0)
 
-                def lib_table(filter_value):
-                    return rt.library.table(_subject_filter(filter_value))
+                def lib_list(filter_value, query="", selected=None):
+                    """The list of papers for the current subject and search, plus what to show when there is none."""
+                    rows = filter_rows(rt.library.rows(_subject_filter(filter_value)), query)
+                    searching = bool((query or "").strip()) or _subject_filter(filter_value) is not None
+                    return papers_html(rows, selected), ("" if rows else library_empty(searching)), gr.update(visible=not rows and not searching)
 
-                def pick_row(evt: gr.SelectData):
-                    row = evt.row_value or []
-                    try:
-                        return int(float(row[0]))
-                    except (IndexError, TypeError, ValueError):
-                        return gr.update()
+                def say(text, ok=True):
+                    return f"<p class='sb-outcome{'' if ok else ' sb-outcome-bad'}' role='status'>{esc(text)}</p>" if text else ""
 
                 def show_page(doc_id, page):
                     if not doc_id or not page:
@@ -263,65 +267,63 @@ def build_app(rt: Runtime) -> gr.Blocks:
                     try:
                         return rt.library.page_image(int(doc_id), int(page)), ""
                     except StudyBuddyError as exc:
-                        return None, f"**Page image not shown:** {exc}"
+                        return None, f"<p class='sb-note' role='note'>The page image is not available: {esc(exc)}</p>"
 
-                doc_outputs = [detail_box, page_pick, lib_image, lib_image_note, new_subject, confirm_group]
+                doc_outputs = [paper_col, paper_head, page_pick, lib_image, lib_image_note, new_subject, confirm_group]
 
                 def show_document(doc_id):
-                    hidden = gr.update(visible=False)
+                    closed = gr.update(visible=False)
                     if not doc_id:
-                        return "", gr.update(choices=[], value=None), None, "", gr.update(), hidden
+                        return closed, "", gr.update(choices=[], value=None), None, "", gr.update(), closed
                     detail = rt.library.detail(int(doc_id))
                     if detail is None:
-                        return ("That document no longer exists. Press Refresh.", gr.update(choices=[], value=None), None, "",
-                                gr.update(), hidden)
+                        return (closed, "", gr.update(choices=[], value=None), None, "", gr.update(), closed)
                     first_flagged = next((p.page_number for p in detail.pages if p.flagged), None)
                     page = first_flagged or (detail.pages[0].page_number if detail.pages else None)
                     image, note = show_page(doc_id, page) if page else (None, "")
-                    return (detail.describe(), gr.update(choices=[p.page_number for p in detail.pages], value=page), image,
-                            note, gr.update(choices=subject_names(), value=detail.row.subject), hidden)
+                    return (gr.update(visible=True), paper_head_html(detail),
+                            gr.update(choices=[(f"Page {p.page_number}", p.page_number) for p in detail.pages], value=page,
+                                      visible=len(detail.pages) > 1),
+                            image, note, gr.update(choices=subject_names(), value=detail.row.subject), closed)
 
-                def change_subject(doc_id, subject, filter_value):
+                def change_subject(doc_id, subject, filter_value, query=""):
                     if not doc_id:
-                        return "Pick a document first.", gr.update(), gr.update()
+                        return say("Choose a paper first.", False), *lib_list(filter_value, query), gr.update()
                     outcome = rt.library.change_subject(int(doc_id), subject or "")
                     detail = rt.library.detail(int(doc_id))
-                    return (("" if outcome.ok else "**Not changed:** ") + outcome.message, lib_table(filter_value),
-                            detail.describe() if detail else gr.update())
+                    return (say(outcome.message, outcome.ok), *lib_list(filter_value, query, int(doc_id)),
+                            paper_head_html(detail) if detail else gr.update())
 
-                def delete_start(doc_id):
-                    detail = rt.library.detail(int(doc_id)) if doc_id else None
-                    if detail is None:
-                        return gr.update(visible=False), "", "Pick a document first."
-                    return (gr.update(visible=True),
-                            f"Remove **{detail.row.title or 'this document'}** from the index? It will no longer be found in "
-                            f"chat. The original file stays in your library.", "")
+                def remove_start(doc_id):
+                    if not doc_id or rt.library.detail(int(doc_id)) is None:
+                        return gr.update(visible=False), say("Choose a paper first.", False)
+                    return gr.update(visible=True), ""
 
-                def delete_confirm(doc_id, filter_value):
+                def remove_confirm(doc_id, filter_value, query=""):
                     if not doc_id:
-                        return "Pick a document first.", gr.update(), *[gr.update()] * 6
+                        return say("Choose a paper first.", False), *lib_list(filter_value, query), gr.update(), gr.update(), gr.update()
                     outcome = rt.library.delete(int(doc_id), confirmed=True)
-                    message = ("" if outcome.ok else "**Not removed:** ") + outcome.message
                     if not outcome.ok:
-                        return message, lib_table(filter_value), *[gr.update()] * 6
-                    return (message, lib_table(filter_value), "", gr.update(choices=[], value=None), None, "", gr.update(),
-                            gr.update(visible=False))
+                        return (say(outcome.message, False), *lib_list(filter_value, query), gr.update(), gr.update(visible=False), gr.update())
+                    return (say(outcome.message), *lib_list(filter_value, query), gr.update(visible=False), gr.update(visible=False), None)
 
+                list_outputs = [papers, lib_empty, add_empty_btn]
+                lib_inputs = [lib_filter, search]
                 lib_filter.focus(refresh_filter, [lib_filter], [lib_filter], api_name=False)
-                lib_refresh_btn.click(lib_table, [lib_filter], [table], api_name="library_list")
-                lib_filter.change(lib_table, [lib_filter], [table], api_name=False)
-                library_tab.select(lambda f: (refresh_filter(f), lib_table(f)), [lib_filter], [lib_filter, table],
-                                   api_name=False)
-                table.select(pick_row, None, [selected_id], api_name=False)
-                selected_id.change(show_document, [selected_id], doc_outputs, api_name="library_detail")
+                search.input(lib_list, lib_inputs, list_outputs, api_name=False, show_progress="hidden")
+                lib_filter.change(lib_list, lib_inputs, list_outputs, api_name=False, show_progress="hidden")
+                gr.Button(visible=False).click(lib_list, lib_inputs, list_outputs, api_name="library_list")
+                library_tab.select(lambda f, q: (refresh_filter(f), *lib_list(f, q)), lib_inputs, [lib_filter, *list_outputs], api_name=False)
+                selected_id.change(show_document, [selected_id], doc_outputs, api_name="library_detail", show_progress="hidden")
                 page_pick.input(show_page, [selected_id, page_pick], [lib_image, lib_image_note], api_name="library_page")
-                change_btn.click(change_subject, [selected_id, new_subject, lib_filter], [lib_message, table, detail_box],
+                change_btn.click(change_subject, [selected_id, new_subject, lib_filter, search], [lib_message, *list_outputs, paper_head],
                                  api_name="library_change_subject")
-                delete_btn.click(delete_start, [selected_id], [confirm_group, confirm_md, lib_message],
-                                 api_name="library_delete_start")
-                confirm_btn.click(delete_confirm, [selected_id, lib_filter], [lib_message, table, *doc_outputs],
-                                  api_name="library_delete_confirm")
-                cancel_btn.click(lambda: gr.update(visible=False), None, [confirm_group], api_name=False)
+                remove_btn.click(remove_start, [selected_id], [confirm_group, lib_message], api_name="library_delete_start")
+                confirm_btn.click(remove_confirm, [selected_id, lib_filter, search],
+                                  [lib_message, *list_outputs, confirm_group, paper_col, selected_id], api_name="library_delete_confirm")
+                keep_btn.click(lambda: gr.update(visible=False), None, [confirm_group], api_name=False)
+                back_btn.click(lambda: (gr.update(visible=False), None), None, [paper_col, selected_id], api_name=False)
+                add_empty_btn.click(lambda: gr.Tabs(selected="add"), None, [tabs], api_name=False)
 
             # ---- upload ----------------------------------------------------------------------
             with gr.Tab("Add", id="add") as upload_tab:
@@ -344,8 +346,8 @@ def build_app(rt: Runtime) -> gr.Blocks:
 
         add_first_btn.click(lambda: gr.Tabs(selected="add"), None, [tabs], api_name=False)
         demo.load(lambda: (*status(), refresh_filter(None), refresh_filter(None), refresh_upload_subject(None),
-                           rt.library.table(None), greeting(), *example_updates()),
-                  outputs=[*status_outputs, chat_subject, lib_filter, up_subject, table, hello, *example_outputs], api_name=False)
+                           *lib_list(None, ""), greeting(), *example_updates()),
+                  outputs=[*status_outputs, chat_subject, lib_filter, up_subject, *list_outputs, hello, *example_outputs], api_name=False)
 
         # Plain endpoints for scripts and tests (gradio_client); the buttons are never shown.
         status_api = gr.Button(visible=False)

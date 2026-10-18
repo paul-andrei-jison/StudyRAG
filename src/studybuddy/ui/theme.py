@@ -103,10 +103,7 @@ def css() -> str:
     return CSS_PATH.read_text(encoding="utf-8")
 
 
-# Runs once when the page loads: apply the saved choice (or the system's) before anything is painted, and wire the toggle button.
-# `data-theme` on <html> drives our tokens; Gradio's own `dark` class on <body> is kept in step so its inner widgets agree.
-THEME_JS = """
-() => {
+THEME_JS_BODY = """
   const root = document.documentElement;
   const read = () => { try { return localStorage.getItem('sb-theme'); } catch (e) { return null; } };
   const write = (v) => { try { localStorage.setItem('sb-theme', v); } catch (e) { /* private window: just do not remember */ } };
@@ -116,7 +113,7 @@ THEME_JS = """
     root.setAttribute('data-theme', dark ? 'dark' : 'light');
     document.body.classList.toggle('dark', dark);
     const button = document.getElementById('sb-theme');
-    if (button) { button.setAttribute('aria-pressed', String(dark)); button.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); }
+    if (button) { button.setAttribute('aria-pressed', String(dark)); button.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); button.setAttribute('title', dark ? 'Switch to light mode' : 'Switch to dark mode'); }
   };
   apply(read());
   media.addEventListener('change', () => { if (!read()) apply(null); });
@@ -126,5 +123,20 @@ THEME_JS = """
     write(next);
     apply(next);
   });
-}
 """
+
+# A paper in the library list is a real button; Gradio only hears about it through a (hidden) number box.
+PICK_JS_BODY = """
+  document.addEventListener('click', (event) => {
+    const row = event.target.closest('.sb-row');
+    const box = document.querySelector('#sb-pick input');
+    if (!row || !box) return;
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(box, row.dataset.id);
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+"""
+
+# Runs once when the page loads: apply the saved choice (or the system's) before anything is painted, wire the toggle and the list.
+# `data-theme` on <html> drives our tokens; Gradio's own `dark` class on <body> is kept in step so its inner widgets agree.
+THEME_JS = "() => {" + THEME_JS_BODY + PICK_JS_BODY + "}"

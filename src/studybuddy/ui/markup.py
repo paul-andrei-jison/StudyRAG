@@ -76,3 +76,55 @@ def slip_caption(source: Source | None, problem: str | None = None) -> str:
     if problem:
         parts.append(f"<p class='sb-note' role='note'>{esc(problem)}</p>")
     return "<div class='sb-slip-caption'>" + "".join(parts) + "</div>"
+
+
+# ---- Library ------------------------------------------------------------------------------------------------------------
+
+def _date(added: str, with_year: bool = False) -> str:
+    try:
+        when = datetime.strptime(added[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return added
+    return f"{when.day} {when:%b} {when.year}" if with_year else f"{when.day} {when:%b}"
+
+
+def _pages(count: int) -> str:
+    return f"{count} page{'s' if count != 1 else ''}"
+
+
+def papers_html(rows: Sequence, selected: int | None = None) -> str:
+    """The list of papers: one real button per paper (keyboard and screen-reader friendly); a small mark if a page was hard to read."""
+    items = []
+    for row in rows:
+        title = row.title or "Untitled paper"
+        meta = " · ".join(x for x in (row.subject, _date(row.added), _pages(row.pages)) if x)
+        warn = ""
+        if row.flagged:
+            many = f"{row.flagged} pages" if row.flagged != 1 else "1 page"
+            warn = f"<span class='sb-row-warn'><span aria-hidden='true'>&#9888;</span> {many} hard to read</span>"
+        current = " aria-current='true'" if selected == row.id else ""
+        items.append(f"<li><button type='button' class='sb-row' data-id='{int(row.id)}'{current}>"
+                     f"<span class='sb-row-title'>{esc(title)}</span><span class='sb-row-meta'>{esc(meta)}</span>{warn}</button></li>")
+    return f"<ul class='sb-papers'>{''.join(items)}</ul>" if items else ""
+
+
+def library_empty(searching: bool) -> str:
+    if searching:
+        return "<p class='sb-empty'>No paper matches that. Try fewer words, or pick All subjects.</p>"
+    return ("<div class='sb-empty'><h2>No papers yet</h2><p>Add a photo or a PDF on the Add screen, "
+            "or send a photo to your Telegram bot. It shows up here when it has been read.</p></div>")
+
+
+def paper_head_html(detail) -> str:
+    """Title, where and when, the summary, and a plain explanation for every page that was hard to read."""
+    row = detail.row
+    meta = " · ".join(x for x in (row.subject, f"Added {_date(row.added, True)}", _pages(row.pages)) if x)
+    parts = [f"<h2>{esc(row.title or 'Untitled paper')}</h2>", f"<p class='sb-muted'>{esc(meta)}</p>"]
+    if row.summary:
+        parts.append(f"<p class='sb-summary'>{esc(row.summary)}</p>")
+    for page in detail.pages:
+        if page.flagged:
+            why = "; ".join(page.reasons) or "the reading quality was low"
+            parts.append(f"<p class='sb-note' role='note'><span aria-hidden='true'>&#9888;</span> Page {page.page_number} was hard to read: "
+                         f"{esc(why)}. Check it against the photo.</p>")
+    return "<div class='sb-paper-head'>" + "".join(parts) + "</div>"

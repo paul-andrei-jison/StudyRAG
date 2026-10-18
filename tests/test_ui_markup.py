@@ -55,3 +55,41 @@ def test_a_hard_to_read_page_gets_a_plain_warning_and_a_cited_one_says_so():
 def test_a_missing_page_image_is_explained_inside_the_caption():
     assert "The page image is not available" in slip_caption(source(), "The page image is not available: gone")
     assert "not in the last answer" in slip_caption(None, "That source is not in the last answer.")
+
+
+# ---- Library -------------------------------------------------------------------------------------------------------
+
+from studybuddy.ui.library import DocumentDetail, DocumentRow, PageInfo, filter_rows
+from studybuddy.ui.markup import library_empty, paper_head_html, papers_html
+
+
+def doc(id=1, subject="Science", title="Water cycle", added="2026-10-18 13:10", pages=2, summary="How water moves.", flagged=0):
+    return DocumentRow(id, subject, title, added, pages, summary, flagged, "C:/lib/x.jpg")
+
+
+def test_the_list_has_one_button_per_paper_with_a_plain_mark_for_hard_pages():
+    html = papers_html([doc(1), doc(2, title="<i>Odd</i>", flagged=2, pages=1)])
+    assert html.count("<button") == 2 and "data-id='1'" in html and "data-id='2'" in html
+    assert "Science · 18 Oct · 2 pages" in html and "1 page" in html
+    assert "2 pages hard to read" in html and "&lt;i&gt;Odd&lt;/i&gt;" in html and "<i>" not in html
+    assert papers_html([]) == "" and "aria-current='true'" in papers_html([doc(5)], selected=5)
+
+
+def test_search_matches_every_word_in_title_subject_or_summary():
+    rows = [doc(1, title="Water cycle"), doc(2, subject="Math", title="Fractions", summary="Adding fractions"), doc(3, title="Layers")]
+    assert [r.id for r in filter_rows(rows, "fraction")] == [2]
+    assert [r.id for r in filter_rows(rows, "MATH adding")] == [2]
+    assert [r.id for r in filter_rows(rows, "science")] == [1, 3]
+    assert len(filter_rows(rows, "  ")) == 3 and filter_rows(rows, "zebra") == []
+
+
+def test_an_empty_library_invites_an_action_and_a_failed_search_says_so():
+    assert "No papers yet" in library_empty(False) and "Telegram bot" in library_empty(False) and "Add screen" in library_empty(False)
+    assert "No paper matches" in library_empty(True)
+
+
+def test_the_paper_view_explains_each_hard_page_in_plain_words():
+    detail = DocumentDetail(doc(), [PageInfo(1, 0.9, [], False, "a"), PageInfo(2, 0.4, ["many words are unreadable"], True, "b")])
+    html = paper_head_html(detail)
+    assert "Added 18 Oct 2026" in html and "2 pages" in html and "How water moves." in html
+    assert "Page 2 was hard to read: many words are unreadable. Check it against the photo." in html and "Page 1 was" not in html

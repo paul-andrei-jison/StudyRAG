@@ -21,7 +21,7 @@ from ..ingest.subjects import UNSORTED, clean_subject_name
 from ..reader.quality import ATTENTION_FLAGS, ATTENTION_QUALITY
 from .files import LibraryGuard
 
-BUSY_MESSAGE = "The study buddy is busy reading a document. Try again shortly."
+BUSY_MESSAGE = "Study Buddy is busy reading a paper. Try again in a moment."
 ACTION_TIMEOUT_SECONDS = 15.0
 TABLE_HEADERS = ["ID", "Subject", "Title", "Added", "Pages", "Summary", "Flagged pages", "Path"]
 
@@ -159,8 +159,8 @@ class LibraryView:
             self.subjects.add(subject)   # only now that it worked, so a failed change leaves no stray subject
         title = next((d.title for d in self.index.documents() if d.id == doc_id), "") or "The document"
         if not outcome.moved:
-            return ActionResult(True, f"'{title}' is already filed under {subject}.")
-        message = f"'{title}' is now filed under {subject}. The file was moved to: {outcome.new_path}"
+            return ActionResult(True, f"'{title}' is already in {subject}.")
+        message = f"Moved '{title}' to {subject}. Its file is now in the {subject} folder."
         if outcome.warnings:
             message += " (" + "; ".join(outcome.warnings) + ")"
         return ActionResult(True, message)
@@ -168,7 +168,7 @@ class LibraryView:
     def delete(self, doc_id: int, confirmed: bool = False) -> ActionResult:
         """Remove a document from the index. The original file in the library is never deleted."""
         if not confirmed:
-            return ActionResult(False, "Not removed: the removal was not confirmed.")
+            return ActionResult(False, "Nothing was removed.")
 
         def action(index: Index):
             doc = index.store.get_document(doc_id)
@@ -181,9 +181,8 @@ class LibraryView:
         if isinstance(outcome, ActionResult):
             return outcome
         if outcome is None:
-            return ActionResult(False, "That document no longer exists. Refresh the list.")
-        return ActionResult(True, f"'{outcome.title}' was removed from the index. "
-                                  f"The original file is still in your library: {outcome.file_path}")
+            return ActionResult(False, "That paper no longer exists in Study Buddy.")
+        return ActionResult(True, f"Removed '{outcome.title}' from Study Buddy. Your original file is still in your folder.")
 
     def _run(self, action):
         try:
@@ -195,9 +194,17 @@ class LibraryView:
         try:
             return future.result(ACTION_TIMEOUT_SECONDS)
         except FutureTimeout:
-            return ActionResult(False, "That is taking longer than expected; it will finish in the background. Refresh in a moment.",
+            return ActionResult(False, "That is taking longer than expected. It will finish in the background; look again in a moment.",
                                 busy=True)
         except StudyBuddyError as exc:
             return ActionResult(False, str(exc))
         except Exception as exc:
-            return ActionResult(False, f"That did not work ({type(exc).__name__}: {exc}).")
+            return ActionResult(False, f"That did not work: {exc}. Try again.")
+
+
+def filter_rows(rows: list[DocumentRow], query: str | None) -> list[DocumentRow]:
+    """Papers whose title, subject or summary contain every word of the search (any case). An empty search keeps all."""
+    words = (query or "").casefold().split()
+    if not words:
+        return list(rows)
+    return [r for r in rows if all(w in f"{r.title} {r.subject} {r.summary}".casefold() for w in words)]

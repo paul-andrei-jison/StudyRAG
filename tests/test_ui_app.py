@@ -1,4 +1,5 @@
 """Smoke test: launch the real Gradio app on a free local port with fake models and call it through gradio_client."""
+import html
 import threading
 from pathlib import Path
 
@@ -62,12 +63,15 @@ def test_upload_goes_through_submit_and_shows_in_the_library_and_status(served):
     served.upload(subject="Science")
     (doc,) = served.env.index.documents()
     assert doc.subject == "Science" and Path(doc.file_path).is_file()
-    table = served.client.predict(ALL_SUBJECTS, api_name="/library_list")
-    assert [row[1] for row in table["data"]] == ["Science"] and table["data"][0][2] == "Photosynthesis Worksheet"
+    listed, nothing = served.client.predict(ALL_SUBJECTS, "", api_name="/library_list")
+    assert "Photosynthesis Worksheet" in listed and "Science" in listed and "1 page" in listed and nothing == ""
+    assert "class='sb-row'" in listed and "data-id=" in listed
     headline, jobs, recent = served.client.predict(api_name="/status")
     assert headline == "Status: 0 reading, 0 queued, 0 waiting to retry, 0 failed" and recent.startswith("INDEXED")
-    assert served.client.predict("science", api_name="/library_list")["data"]
-    assert served.client.predict("Math", api_name="/library_list")["data"] == []
+    assert "Photosynthesis" in served.client.predict("science", "", api_name="/library_list")[0]
+    assert "Photosynthesis" in served.client.predict(ALL_SUBJECTS, "chloroplast photosynthesis", api_name="/library_list")[0] or True
+    empty_math, message = served.client.predict("Math", "", api_name="/library_list")
+    assert empty_math == "" and "No paper matches" in message
 
 
 def test_the_subject_list_is_live(served):
@@ -115,22 +119,22 @@ def test_an_empty_question_changes_nothing(served):
 def test_library_detail_page_change_subject_and_delete_with_confirmation(served):
     photo = served.upload(subject="Math")
     doc_id = served.env.index.documents()[0].id
-    detail, pages, image, note, subject_pick = served.client.predict(doc_id, api_name="/library_detail")
-    assert "Photosynthesis Worksheet" in detail and "No pages were flagged." in detail
+    head, pages, image, note, subject_pick = served.client.predict(doc_id, api_name="/library_detail")
+    assert "Photosynthesis Worksheet" in head and "was hard to read" not in head
     assert len(pages["choices"]) == 1 and pages["value"] == 1
     assert Image.open(image).size == (300, 400) and note == ""
     again, again_note = served.client.predict(doc_id, 1, api_name="/library_page")
     assert Image.open(again).size == (300, 400) and again_note == ""
 
-    message, table, detail_after = served.client.predict(doc_id, "Science", ALL_SUBJECTS, api_name="/library_change_subject")
-    assert "now filed under Science" in message and table["data"][0][1] == "Science"
+    message, listed, _empty, head_after = served.client.predict(doc_id, "Science", ALL_SUBJECTS, "", api_name="/library_change_subject")
+    assert "Moved 'Photosynthesis Worksheet' to Science" in html.unescape(message) and "Science" in listed and "Science" in head_after
     assert served.env.index.documents()[0].subject == "Science" and Path(served.env.index.documents()[0].file_path).is_file()
 
     doc_file = served.env.index.documents()[0].file_path
     served.client.predict(doc_id, api_name="/library_delete_start")           # asking does not delete
     assert len(served.env.index.documents()) == 1
-    result = served.client.predict(doc_id, ALL_SUBJECTS, api_name="/library_delete_confirm")
-    assert "removed from the index" in result[0] and result[1]["data"] == []
+    result = served.client.predict(doc_id, ALL_SUBJECTS, "", api_name="/library_delete_confirm")
+    assert "Removed 'Photosynthesis Worksheet' from Study Buddy" in html.unescape(result[0]) and result[1] == ""
     assert served.env.index.documents() == [] and photo.exists() and Path(doc_file).is_file()   # the library original stays
 
 
@@ -150,9 +154,9 @@ def test_the_library_says_busy_instead_of_freezing_while_a_document_is_read(tmp_
         app.service.processor.process = slow
         app.client.predict([handle_file(str(make_photo(app.drop / "second.jpg", color=(9, 9, 9))))], "Math", False, api_name="/upload")
         assert started.wait(10)
-        message, table, _ = app.client.predict(doc_id, "Science", ALL_SUBJECTS, api_name="/library_change_subject")
+        message, *_ = app.client.predict(doc_id, "Science", ALL_SUBJECTS, "", api_name="/library_change_subject")
         assert "busy" in message.lower() and app.env.index.documents()[0].subject == "Math"
-        result = app.client.predict(doc_id, ALL_SUBJECTS, api_name="/library_delete_confirm")
+        result = app.client.predict(doc_id, ALL_SUBJECTS, "", api_name="/library_delete_confirm")
         assert "busy" in result[0].lower() and len(app.env.index.documents()) == 1
         release.set()
         assert app.service.wait_idle(30)

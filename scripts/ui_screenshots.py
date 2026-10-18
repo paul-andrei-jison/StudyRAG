@@ -85,12 +85,36 @@ def scene_ask_which(page, demo):
     page.wait_for_selector("#sb-which label", state="visible", timeout=30000)
 
 
+def scene_library_paper(page, demo):
+    tab(page, "Library")
+    page.locator(".sb-row").nth(1).click()
+    page.wait_for_selector("#sb-paper-head h2", state="visible", timeout=15000)
+    page.wait_for_timeout(600)
+
+
+def scene_library_remove(page, demo):
+    scene_library_paper(page, demo)
+    page.get_by_text("More actions").click()
+    page.get_by_role("button", name="Remove from Study Buddy").click()
+    page.wait_for_selector("#sb-confirm", state="visible", timeout=10000)
+
+
+def scene_library_search(page, demo):
+    tab(page, "Library")
+    page.locator("#sb-search textarea, #sb-search input").first.fill("fraction")
+    page.wait_for_timeout(800)
+
+
 SCENES = {
+    "library-paper": scene_library_paper,
+    "library-remove": scene_library_remove,
+    "library-search": scene_library_search,
     "ask-empty": scene_ask_empty,
     "ask-answer": scene_ask_answer,
     "ask-refusal": scene_ask_refusal,
     "ask-which": scene_ask_which,
     "library": scene_library,
+    "library-empty": scene_library,
     "add": scene_add,
 }
 

@@ -84,7 +84,7 @@ def test_change_subject_moves_the_file_and_updates_documents_and_search(lab):
     filed = Path(result.final_path)
     outcome = view.change_subject(result.doc_id, "science")
     doc = env.index.documents()[0]
-    assert outcome.ok and "now filed under Science" in outcome.message and doc.file_path in outcome.message
+    assert outcome.ok and "Moved 'Photosynthesis Worksheet' to Science" in outcome.message
     assert doc.subject == "Science" and Path(doc.file_path).parent.name == "Science" and Path(doc.file_path).is_file()
     assert not filed.exists()                                                  # moved, not copied
     assert view.page_image(result.doc_id, 1).size == (300, 400)                # the page still opens from its new place
@@ -97,7 +97,7 @@ def test_change_subject_to_the_current_subject_is_a_no_op(lab):
     env, service, view = lab
     result = file_one(env, service, subject="Math")
     outcome = view.change_subject(result.doc_id, "MATH")
-    assert outcome.ok and "already filed under Math" in outcome.message and Path(result.final_path).is_file()
+    assert outcome.ok and "already in Math" in outcome.message and Path(result.final_path).is_file()
 
 
 def test_change_subject_refuses_and_changes_nothing_when_the_file_is_missing(lab):
@@ -133,7 +133,7 @@ def test_delete_needs_confirmation_and_keeps_the_original_file(lab):
     filed = Path(result.final_path)
     assert not view.delete(result.doc_id).ok and len(env.index.documents()) == 1
     outcome = view.delete(result.doc_id, confirmed=True)
-    assert outcome.ok and "removed from the index" in outcome.message and "still in your library" in outcome.message
+    assert outcome.ok and "Removed 'Photosynthesis Worksheet' from Study Buddy" in outcome.message and "original file is still in your folder" in outcome.message
     assert env.index.documents() == [] and filed.exists()
     assert not env.index.search("photosynthesis", k=3)
     again = view.delete(result.doc_id, confirmed=True)
