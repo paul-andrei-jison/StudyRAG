@@ -35,7 +35,7 @@ class Served:
     def upload(self, name="worksheet.jpg", subject="Science", **kw):
         photo = make_photo(self.drop / name, **kw)
         message, cleared = self.client.predict([handle_file(str(photo))], subject, False, api_name="/upload")
-        assert message.startswith("Queued 1 document"), message
+        assert message.startswith("<p class='sb-outcome' role='status'>Added 1 paper."), message
         assert self.service.wait_idle(30)
         return photo
 
@@ -170,7 +170,7 @@ def test_failed_documents_can_be_retried_from_the_status_panel(tmp_path, setting
     app = Served(tmp_path, settings, reader=FakeReader(texts=[RuntimeError("reader exploded")]))
     try:
         message, _ = app.client.predict([handle_file(str(make_photo(app.drop / "a.jpg")))], "Math", False, api_name="/upload")
-        assert message.startswith("Queued")
+        assert "Added 1 paper" in message
         assert app.service.wait_idle(30)
         headline, jobs, recent = app.client.predict(api_name="/status")
         assert "1 failed" in headline and "reader exploded" in jobs
@@ -186,13 +186,13 @@ def test_upload_problems_are_reported_in_words(served):
     bad.parent.mkdir(parents=True, exist_ok=True)
     bad.write_text("hello", encoding="utf-8")
     message, _ = served.client.predict([handle_file(str(bad))], "Math", False, api_name="/upload")
-    assert message.startswith("**Not queued:**") and "notes.jpg" in message and "damaged" in message
+    assert "sb-outcome-bad" in message and "Nothing was added" in message and "notes.jpg" in message and "damaged" in message
     wrong_type = served.drop / "notes.txt"   # Gradio itself refuses a file type the tab does not list
     wrong_type.write_text("hello", encoding="utf-8")
     with pytest.raises(Exception, match="Invalid file type"):
         served.client.predict([handle_file(str(wrong_type))], "Math", False, api_name="/upload")
     message, _ = served.client.predict([], "Math", False, api_name="/upload")
-    assert "Drop at least one" in message
+    assert "Choose at least one photo" in message
 
 
 def test_library_files_cannot_be_fetched_by_url(served):

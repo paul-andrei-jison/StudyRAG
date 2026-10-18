@@ -325,20 +325,23 @@ def build_app(rt: Runtime) -> gr.Blocks:
                 back_btn.click(lambda: (gr.update(visible=False), None), None, [paper_col, selected_id], api_name=False)
                 add_empty_btn.click(lambda: gr.Tabs(selected="add"), None, [tabs], api_name=False)
 
-            # ---- upload ----------------------------------------------------------------------
+            # ---- add -------------------------------------------------------------------------------
             with gr.Tab("Add", id="add") as upload_tab:
-                gr.Markdown("Drop photos of your papers or a PDF. They are read in the background; the status panel shows progress.")
-                files = gr.File(label="Photos or PDF", file_count="multiple", file_types=UPLOAD_TYPES, type="filepath")
-                with gr.Row():
-                    up_subject = gr.Dropdown([AUTO_DETECT, *start_names], value=AUTO_DETECT, label="Subject (type a new one if needed)",
-                                             allow_custom_value=True, scale=3)
-                    album = gr.Checkbox(label="These photos are pages of one document (album)", value=False, scale=2)
-                upload_btn = gr.Button("Add to my library", variant="primary")
-                upload_msg = gr.Markdown()
+                with gr.Column(elem_id="sb-add"):
+                    gr.HTML("<h2>Add papers</h2><p class='sb-muted'>Photos or a PDF. Study Buddy reads them in the background, "
+                            "so you can keep studying.</p>", padding=False)
+                    files = gr.File(show_label=False, file_count="multiple", file_types=UPLOAD_TYPES, type="filepath", elem_id="sb-drop",
+                                    container=False)
+                    up_subject = gr.Dropdown([AUTO_DETECT, *start_names], value=AUTO_DETECT, label="Subject", allow_custom_value=True,
+                                             info="Pick one, or type a new subject.", elem_id="sb-add-subject")
+                    album = gr.Checkbox(label="These pages belong together", value=False, elem_id="sb-album",
+                                        info="Turn this on for several photos of one paper. They are kept in the order of their names.")
+                    upload_btn = gr.Button("Add papers", variant="primary", elem_id="sb-add-btn")
+                    upload_msg = gr.HTML(elem_id="sb-added", padding=False)
 
                 def upload(dropped, subject, as_album):
                     outcome = submit_uploads(rt.service, dropped, subject, bool(as_album))
-                    return ("" if outcome.ok else "**Not queued:** ") + outcome.message, (gr.update(value=None) if outcome.ok else gr.update())
+                    return say(outcome.message, outcome.ok), (gr.update(value=None) if outcome.ok else gr.update())
 
                 upload_btn.click(upload, [files, up_subject, album], [upload_msg, files], api_name="upload")
                 up_subject.focus(refresh_upload_subject, [up_subject], [up_subject], api_name=False)

@@ -23,7 +23,7 @@ from ..ingest.watcher import ALBUM_TYPES, natural_key
 
 log = logging.getLogger(__name__)
 
-AUTO_DETECT = "Auto-detect"
+AUTO_DETECT = "Let Study Buddy decide"
 EMPTY_DIR_GRACE_SECONDS = 60
 
 
@@ -68,7 +68,7 @@ def submit_uploads(service: IngestService, files: Sequence[str | Path] | None, s
     """Queue what the student dropped. Never waits for the documents to be read."""
     paths = [Path(f) for f in (files or [])]
     if not paths:
-        return UploadOutcome(False, "Drop at least one photo or PDF first.")
+        return UploadOutcome(False, "Choose at least one photo or a PDF first.")
     try:
         canonical = _subject_choice(service, subject)
     except StudyBuddyError as exc:
@@ -85,14 +85,14 @@ def submit_uploads(service: IngestService, files: Sequence[str | Path] | None, s
             skipped.append(f"{path.name}: cannot be read ({exc})")
     if album:
         if skipped:
-            return UploadOutcome(False, "The album was not queued, because " + "; ".join(skipped), skipped=skipped)
+            return UploadOutcome(False, "Nothing was added, because " + "; ".join(skipped), skipped=skipped)
         if len(good) < 2:
-            return UploadOutcome(False, "An album needs at least two photos. Untick the album box to add one photo.")
+            return UploadOutcome(False, "Pages that belong together need at least two photos. Turn that switch off to add a single photo.")
         if any(info.kind not in ALBUM_TYPES for info in good):
-            return UploadOutcome(False, "An album can only hold photos, not PDFs. Add the PDF on its own.")
+            return UploadOutcome(False, "Pages that belong together must all be photos. Add the PDF on its own.")
         good.sort(key=lambda info: natural_key(Path(info.path.name)))   # same page order as the inbox: img2 before img10
     if not good:
-        return UploadOutcome(False, "Nothing could be queued: " + "; ".join(skipped), skipped=skipped)
+        return UploadOutcome(False, "Nothing was added: " + "; ".join(skipped), skipped=skipped)
 
     sweep_empty_uploads(uploads_dir(service))
     groups = [good] if album else [[item] for item in good]
@@ -105,11 +105,15 @@ def submit_uploads(service: IngestService, files: Sequence[str | Path] | None, s
         except OSError as exc:
             skipped.append(f"{group[0].path.name}: could not be copied ({exc})")
     if not tickets:
-        return UploadOutcome(False, "Nothing could be queued: " + "; ".join(skipped), skipped=skipped)
-    what = "album" if album else ("document" if len(tickets) == 1 else "documents")
-    message = f"Queued {len(tickets)} {what}. Watch the status panel; the result appears there when reading is done."
+        return UploadOutcome(False, "Nothing was added: " + "; ".join(skipped), skipped=skipped)
+    if album:
+        message = f"Added 1 paper made of {len(good)} pages. It is being read now; follow it in the corner of the screen."
+    elif len(tickets) == 1:
+        message = "Added 1 paper. It is being read now; follow it in the corner of the screen."
+    else:
+        message = f"Added {len(tickets)} papers. They are being read now; follow them in the corner of the screen."
     if skipped:
-        message += " Skipped: " + "; ".join(skipped)
+        message += " Not added: " + "; ".join(skipped)
     return UploadOutcome(True, message, queued=len(tickets), skipped=skipped, tickets=tickets)
 
 

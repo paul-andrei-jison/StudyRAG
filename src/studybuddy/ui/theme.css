@@ -338,6 +338,21 @@ main.app { padding: 0 !important; }
 #sb-back { align-self: flex-start; display: none !important; }
 #sb-root .form, #sb-root .styler { background: transparent !important; border: 0 !important; box-shadow: none !important; }
 
+/* ---- Add ---------------------------------------------------------------------------------------------------------- */
+#sb-add { max-width: 720px; margin: 0 auto; gap: 18px !important; }
+#sb-add h2 { font-size: var(--text-h2); margin: 0 0 4px; }
+#sb-drop { background: var(--surface) !important; border: 2px dashed var(--line-strong) !important; border-radius: var(--r-xl) !important; min-height: 220px; box-shadow: none !important; }
+#sb-drop:hover, #sb-drop:focus-within { border-color: var(--accent-text) !important; }
+/* Gradio's own drop text is in its fixed wording; ours replaces it */
+#sb-drop .wrap { font-size: 0 !important; min-height: 200px; }
+#sb-drop .wrap::before { content: "Drop photos or a PDF here, or click to choose"; font-size: var(--text-answer); color: var(--ink); text-align: center; padding: 0 24px; }
+#sb-drop .wrap > * { display: none !important; }
+#sb-drop table, #sb-drop .file-preview { font-size: var(--text-small); }
+#sb-add-subject, #sb-album { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+#sb-add-btn { align-self: flex-start; min-width: 160px; }
+#sb-added .sb-outcome { background: var(--sunk); border-left: 4px solid var(--accent-text); border-radius: var(--r-md); padding: 14px 16px; font-size: var(--text-answer); }
+#sb-added .sb-outcome-bad { background: var(--warn-bg); border-left-color: var(--warn); }
+
 /* ---- phone ------------------------------------------------------------------------------------------------------- */
 @media (max-width: 640px) {
   #sb-root { --gutter: 16px; --text-hello: 1.625rem; }   /* not :root: Gradio scopes rules inside @media, which breaks :root */
@@ -352,6 +367,8 @@ main.app { padding: 0 !important; }
   #sb-lib:has(#sb-paper) #sb-lib-list { display: none; }
   #sb-lib:has(#sb-paper) #sb-back { display: inline-flex !important; }
   #sb-paper { padding: 14px; }
+  #sb-drop, #sb-drop .wrap { min-height: 160px; }
+  #sb-add-btn { width: 100%; }
   #sb-root #sb-examples button.sb-example { width: 100%; }
 }
 

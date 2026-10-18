@@ -105,7 +105,19 @@ def scene_library_search(page, demo):
     page.wait_for_timeout(800)
 
 
+def scene_add_done(page, demo):
+    from ui_demo import draw_page
+    tab(page, "Add")
+    photo = draw_page(demo.root / "incoming" / "my photo.jpg", "New worksheet", ["A freshly photographed page."])
+    page.locator("#sb-drop input[type=file]").set_input_files(str(photo))
+    page.wait_for_timeout(800)
+    page.locator("#sb-add-btn").click()
+    page.wait_for_selector("#sb-added .sb-outcome", timeout=15000)
+    page.wait_for_timeout(500)
+
+
 SCENES = {
+    "add-done": scene_add_done,
     "library-paper": scene_library_paper,
     "library-remove": scene_library_remove,
     "library-search": scene_library_search,
@@ -123,7 +135,11 @@ def safe(text: str) -> str:
     return text.encode("ascii", "replace").decode()
 
 
-def run(out: Path, only: list[str] | None) -> int:
+# Gradio keeps upload bookkeeping in module globals bound to the first event loop, so a scene that uploads runs each variant in its own process.
+ISOLATE = {"add-done"}
+
+
+def run(out: Path, only: list[str] | None, variant: str | None = None) -> int:
     from playwright.sync_api import sync_playwright
 
     failures: list[str] = []
@@ -136,6 +152,13 @@ def run(out: Path, only: list[str] | None) -> int:
                 continue
             for size_name, (width, height) in SIZES.items():
                 for mode in MODES:
+                    if variant and variant != f"{size_name}-{mode}":
+                        continue
+                    if name in ISOLATE and not variant:
+                        import subprocess
+                        done = subprocess.run([sys.executable, __file__, str(out), "--only", name, "--variant", f"{size_name}-{mode}"])
+                        failures += [f"{name} {size_name} {mode}"] if done.returncode else []
+                        continue
                     root = Path(tmp) / f"{name}-{size_name}-{mode}"
                     demo = build_demo(root, papers=name != "empty-library", busy=name.startswith("activity"),
                                       host="0.0.0.0" if name == "banner" else "127.0.0.1")
@@ -180,9 +203,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("out", nargs="?", default=None)
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--variant", default=None, help="size-mode, e.g. phone-dark (used internally for isolated scenes)")
     args = parser.parse_args()
     out = Path(args.out) if args.out else Path(tempfile.gettempdir()) / "sb-screenshots"
-    return run(out, args.only)
+    return run(out, args.only, args.variant)
 
 
 if __name__ == "__main__":

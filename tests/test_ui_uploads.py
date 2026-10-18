@@ -45,7 +45,7 @@ def test_one_photo_is_copied_queued_and_filed_with_the_chosen_subject(lab):
     photo = dropped(drop, "IMG 1.jpg")
     before = photo.read_bytes()
     outcome = submit_uploads(service, [str(photo)], "Science", album=False)
-    assert outcome.ok and outcome.queued == 1 and "Queued 1 document" in outcome.message
+    assert outcome.ok and outcome.queued == 1 and outcome.message.startswith("Added 1 paper.")
     result = outcome.tickets[0].result(timeout=30)
     assert result.status == INDEXED and result.subject == "Science" and result.subject_source == "user"
     assert photo.read_bytes() == before                                  # the dropped file is never touched
@@ -74,7 +74,7 @@ def test_an_album_is_one_document_in_natural_name_order(tmp_path, settings):
     drop = tmp_path / "dropped"
     files = [dropped(drop, name, color=(i * 30, 5, 5)) for i, name in enumerate(["img10.jpg", "img2.jpg", "img1.jpg"], 1)]
     outcome = submit_uploads(service, files, "Science", album=True)
-    assert outcome.ok and outcome.queued == 1 and "album" in outcome.message
+    assert outcome.ok and outcome.queued == 1 and "1 paper made of 3 pages" in outcome.message
     (job,) = service.jobs.load_all()
     assert job.is_album and job.origin == "ui" and job.subject == "Science" and job.kinds == ["photo-file"] * 3
     assert [os.path.basename(f)[:2] for f in job.files] == ["01", "02", "03"]
@@ -83,8 +83,8 @@ def test_an_album_is_one_document_in_natural_name_order(tmp_path, settings):
 
 
 @pytest.mark.parametrize("make, expected", [
-    (lambda d: [dropped(d, "only.jpg")], "at least two photos"),
-    (lambda d: [dropped(d, "a.jpg"), make_pdf(d / "b.pdf")], "only hold photos"),
+    (lambda d: [dropped(d, "only.jpg")], "need at least two photos"),
+    (lambda d: [dropped(d, "a.jpg"), make_pdf(d / "b.pdf")], "must all be photos"),
 ])
 def test_album_rules_are_explained_and_nothing_is_queued(lab, make, expected):
     env, service, board, drop = lab
@@ -126,8 +126,8 @@ def test_a_file_that_is_not_what_its_name_says_is_judged_by_its_bytes(lab):
 
 def test_nothing_dropped_and_bad_subjects_are_explained(lab):
     env, service, board, drop = lab
-    assert "Drop at least one" in submit_uploads(service, [], "Math").message
-    assert "Drop at least one" in submit_uploads(service, None, "Math").message
+    assert "Choose at least one photo" in submit_uploads(service, [], "Math").message
+    assert "Choose at least one photo" in submit_uploads(service, None, "Math").message
     outcome = submit_uploads(service, [dropped(drop, "a.jpg")], "CON")
     assert not outcome.ok and "reserved" in outcome.message and service.jobs.load_all() == []
 
