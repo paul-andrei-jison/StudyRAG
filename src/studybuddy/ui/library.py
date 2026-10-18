@@ -14,6 +14,7 @@ from PIL import Image
 
 from ..errors import StudyBuddyError
 from ..index.index import Index
+from ..ingest.relocate import JOURNAL_DIRNAME, Relocator
 from ..ingest.results import FLAG_REASONS, IGNORED_FLAGS
 from ..ingest.service import IngestService
 from ..ingest.subjects import UNSORTED, clean_subject_name
@@ -105,6 +106,8 @@ class LibraryView:
     def __init__(self, service: IngestService, guard: LibraryGuard):
         self.service, self.guard = service, guard
         self.subjects = service.subjects
+        settings = service.settings
+        self.relocator = Relocator(service.index, settings.library_dir, settings.data_dir / JOURNAL_DIRNAME)
 
     @property
     def index(self) -> Index:
@@ -142,28 +145,25 @@ class LibraryView:
     # ---- changing (through the single writer) --------------------------------------------------
 
     def change_subject(self, doc_id: int, raw_subject: str) -> ActionResult:
-        """Give a document another subject (a new name is allowed and joins the subject list). The file is not moved."""
+        """Give a document another subject (a new name is allowed and joins the subject list) and move its file(s) to that
+        subject's folder. All or nothing: if anything cannot be done the document, its file and the index stay as they were."""
         try:
             subject = self.subjects.find(raw_subject) or clean_subject_name(raw_subject)
         except StudyBuddyError as exc:
             return ActionResult(False, str(exc))
 
-        def action(index: Index):
-            doc = index.store.get_document(doc_id)
-            if doc is None:
-                return None
-            index.update_document(doc_id, subject=subject)
-            return doc
-
-        outcome = self._run(action)
+        outcome = self._run(lambda index: self.relocator.relocate(doc_id, subject))
         if isinstance(outcome, ActionResult):
             return outcome
-        if outcome is None:
-            return ActionResult(False, "That document no longer exists. Refresh the list.")
         if subject != UNSORTED:
             self.subjects.add(subject)   # only now that it worked, so a failed change leaves no stray subject
-        return ActionResult(True, f"'{outcome.title}' is now filed under {subject}. "
-                                  f"The file itself stays where it is: {outcome.file_path}")
+        title = next((d.title for d in self.index.documents() if d.id == doc_id), "") or "The document"
+        if not outcome.moved:
+            return ActionResult(True, f"'{title}' is already filed under {subject}.")
+        message = f"'{title}' is now filed under {subject}. The file was moved to: {outcome.new_path}"
+        if outcome.warnings:
+            message += " (" + "; ".join(outcome.warnings) + ")"
+        return ActionResult(True, message)
 
     def delete(self, doc_id: int, confirmed: bool = False) -> ActionResult:
         """Remove a document from the index. The original file in the library is never deleted."""

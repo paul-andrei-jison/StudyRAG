@@ -78,16 +78,35 @@ def test_a_page_whose_stored_path_leaves_the_library_is_refused(lab, tmp_path):
         view.page_image(doc_id, 1)
 
 
-def test_change_subject_updates_documents_and_search_but_not_the_file(lab):
+def test_change_subject_moves_the_file_and_updates_documents_and_search(lab):
     env, service, view = lab
     result = file_one(env, service, subject="Math")
     filed = Path(result.final_path)
     outcome = view.change_subject(result.doc_id, "science")
-    assert outcome.ok and "now filed under Science" in outcome.message and str(filed) in outcome.message
-    assert env.index.documents()[0].subject == "Science"
-    assert filed.exists() and filed.parent.name == "Math"                      # nothing was moved
+    doc = env.index.documents()[0]
+    assert outcome.ok and "now filed under Science" in outcome.message and doc.file_path in outcome.message
+    assert doc.subject == "Science" and Path(doc.file_path).parent.name == "Science" and Path(doc.file_path).is_file()
+    assert not filed.exists()                                                  # moved, not copied
+    assert view.page_image(result.doc_id, 1).size == (300, 400)                # the page still opens from its new place
     hits = env.index.search("photosynthesis chloroplasts glucose", k=3, subject="Science")
-    assert hits and not env.index.search("photosynthesis chloroplasts glucose", k=3, subject="Math")
+    assert hits and hits[0].image_path == doc.file_path
+    assert not env.index.search("photosynthesis chloroplasts glucose", k=3, subject="Math")
+
+
+def test_change_subject_to_the_current_subject_is_a_no_op(lab):
+    env, service, view = lab
+    result = file_one(env, service, subject="Math")
+    outcome = view.change_subject(result.doc_id, "MATH")
+    assert outcome.ok and "already filed under Math" in outcome.message and Path(result.final_path).is_file()
+
+
+def test_change_subject_refuses_and_changes_nothing_when_the_file_is_missing(lab):
+    env, service, view = lab
+    result = file_one(env, service, subject="Math")
+    Path(result.final_path).unlink()
+    outcome = view.change_subject(result.doc_id, "Science")
+    assert not outcome.ok and "missing from the library" in outcome.message
+    assert env.index.documents()[0].subject == "Math" and "Science" in env.subjects.names()   # Science was already on the list
 
 
 def test_a_new_subject_joins_the_list_only_when_the_change_worked(lab):
@@ -156,5 +175,30 @@ def test_changes_say_busy_while_a_document_is_being_read_and_do_not_run_later(tm
         assert next(d for d in env.index.documents() if d.id == doc_id).subject == "Geography"  # neither refused action ran later
     finally:
         release.set()
+        service.stop()
+        env.index.close()
+
+
+def test_starting_the_app_settles_a_subject_change_a_crash_interrupted(tmp_path, settings):
+    import json
+    from chat_helpers import ScriptedClient
+    from studybuddy.ui.runtime import Runtime
+    env = make_env(tmp_path, settings)
+    service = IngestService(env.settings, env.index, env.reader, None, env.chat, env.subjects, poll_interval=0.02)
+    result = env.processor.process(env.job(make_photo(env.inbox / "a.jpg"), subject="Math"))
+    half_made = env.library / "Science" / "half-made-copy.jpg"          # a copy the crashed move had created
+    half_made.parent.mkdir()
+    half_made.write_bytes(b"partial")
+    journal = env.data / "relocations" / f"{result.doc_id}.json"
+    journal.parent.mkdir()
+    journal.write_text(json.dumps({"doc_id": result.doc_id, "old_subject": "Math", "new_subject": "Science", "old_path": result.final_path,
+                                   "mapping": {result.final_path: str(half_made)}, "created": [str(half_made)], "state": "copying"}),
+                       encoding="utf-8")
+    rt = Runtime(env.settings, ScriptedClient(), env.index, env.subjects, service)
+    rt.start()
+    try:
+        assert service.wait_idle(10)
+        assert not half_made.exists() and not journal.exists() and Path(result.final_path).is_file()
+    finally:
         service.stop()
         env.index.close()

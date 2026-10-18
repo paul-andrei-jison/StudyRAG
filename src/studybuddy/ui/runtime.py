@@ -48,9 +48,22 @@ class Runtime:
     def start(self) -> "Runtime":
         sweep_empty_uploads(uploads_dir(self.service))
         self.service.start()
+        self.service.run_exclusive(self._settle_interrupted_moves).add_done_callback(self._log_settled)
         if self.watcher is not None:
             self.watcher.start()
         return self
+
+    def _settle_interrupted_moves(self, index: Index) -> list[str]:
+        """A subject change that a crash interrupted is undone or finished before anything else touches the library."""
+        return self.library.relocator.recover()
+
+    @staticmethod
+    def _log_settled(future) -> None:
+        try:
+            for note in future.result():
+                log.warning("subject change settled after a restart: %s", note)
+        except Exception:
+            log.exception("could not settle interrupted subject changes")
 
     def close(self) -> None:
         """Orderly shutdown: stop looking for files, let the document being read finish, then close the stores."""

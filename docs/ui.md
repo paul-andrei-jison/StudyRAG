@@ -16,7 +16,7 @@ analytics and no `allowed_paths`.
   as *probably not relevant*; hard-to-read pages and program notes show as `Check this:` callouts. While nothing has arrived it shows "Searching your papers..." and, after 8 s,
   "Waking the model, this can take a minute...".
 - **Library**: documents with subject, title, date, pages, summary, flagged-page count and path. Click a row for the detail, per-page quality in plain words and the original page image.
-  **Change subject** updates the index only; **Delete from index** asks for confirmation. If the worker is reading a document the answer is "busy, try again shortly" at once:
+  **Change subject** moves the file(s) to the new subject's folder and updates the index (see below); **Delete from index** asks for confirmation. If the worker is reading a document the answer is "busy, try again shortly" at once:
   the action is refused, not queued, so it cannot run later by surprise.
 - **Upload**: drop photos or PDFs, pick a subject or Auto-detect (a new name may be typed), tick *album* to make several photos one document (natural file-name order, photos only).
   Uploads are copied into `SB_DATA_DIR/uploads/` and queued with `IngestService.submit(origin="ui")`, the same call the Telegram bot will use. Gradio refuses file types the tab does not list.
@@ -25,8 +25,12 @@ analytics and no `allowed_paths`.
 ## Decisions to know
 
 - **Delete never removes the original.** The file stays in the library; only the index entries go. Uploading the same file again works.
-- **Change subject does not move the file.** The index, search and filters follow the new subject; the file stays in its old folder (the message says where).
-  Moving files is a separate, riskier change.
+- **Change subject moves the file, all or nothing** (`ingest/relocate.py`, on the single writer). Each file (an album: its folder, pages and PDF) is copied into
+  `SB_LIBRARY_DIR/<New subject>/` with the new subject in its name and checked by SHA-256 against the original before it is renamed into place; then the subject and
+  every stored path (document, pages, the page records, chunks) are rewritten in one transaction and the vector store follows; only then are the old copies re-checked and deleted
+  and the old folder removed if it is empty. If anything fails (a copy that does not match, a database or vector error) exactly what was created is deleted and the rows are put back,
+  so nothing changes. It is refused, changing nothing, when a stored file is missing or lies outside the library. A journal in `SB_DATA_DIR/relocations/` lets the next start undo or finish a move a crash interrupted.
+  Moving to the subject a document already has does nothing. A file the student renamed by hand keeps its name and only changes folder.
 - **Only library files can be shown, and never by URL.** `ui/files.py` resolves symlinks, `..`, junctions, drive and stream forms, requires the real path inside `SB_LIBRARY_DIR`, checks the
   file type from its bytes and returns a decoded, size-limited image. A path in the index that points elsewhere is refused. The smoke test confirms `/gradio_api/file=<library file>` and `../` variants return 403/404.
 - Chat questions run one at a time (a single GPU); other tabs keep working. Page text is shown in plain text boxes, and the chat sanitises HTML.
