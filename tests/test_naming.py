@@ -6,7 +6,7 @@ import pytest
 
 from studybuddy.ingest.naming import (
     MAX_PATH_CHARS, NamingError, claim_unique_dir, claim_unique_file, fit_name, is_windows_reserved,
-    library_stem, normalise_extension, sanitize_component, slugify, subject_folder, subject_token,
+    library_stem, sanitize_component, slugify, subject_folder, subject_token,
 )
 
 WHEN = datetime(2026, 10, 17, 14, 25)
@@ -93,11 +93,6 @@ def test_library_stem_matches_the_documented_shape():
     assert library_stem(WHEN, "Earth Science", "Plates") == "2026-10-17_1425_Earth-Science_plates"
     assert library_stem(WHEN, "Science", "") == "2026-10-17_1425_Science_untitled"
     assert library_stem(datetime(2026, 1, 2, 3, 4), "Math", "x") == "2026-01-02_0304_Math_x"
-
-
-def test_extensions():
-    assert normalise_extension(".JPEG") == ".jpg" and normalise_extension("PNG") == ".png"
-    assert normalise_extension(".tif") == ".tiff" and normalise_extension("") == ""
 
 
 def test_fit_name_shortens_long_stems_but_keeps_the_extension(tmp_path):

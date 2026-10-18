@@ -23,7 +23,6 @@ from .files import LibraryGuard
 
 BUSY_MESSAGE = "Study Buddy is busy reading a paper. Try again in a moment."
 ACTION_TIMEOUT_SECONDS = 15.0
-TABLE_HEADERS = ["ID", "Subject", "Title", "Added", "Pages", "Summary", "Flagged pages", "Path"]
 
 
 @dataclass
@@ -45,11 +44,6 @@ class PageInfo:
     def flagged(self) -> bool:
         return bool(self.reasons) or self.hard_to_read
 
-    def line(self) -> str:
-        quality = "?" if self.quality is None else f"{self.quality:.2f}"
-        note = f" - {'; '.join(self.reasons)}" if self.reasons else ""
-        return f"page {self.page_number}: reading quality {quality}{note}"
-
 
 @dataclass
 class DocumentRow:
@@ -62,23 +56,11 @@ class DocumentRow:
     flagged: int
     path: str
 
-    def as_list(self) -> list:
-        return [self.id, self.subject, self.title, self.added, self.pages, self.summary, self.flagged, self.path]
-
 
 @dataclass
 class DocumentDetail:
     row: DocumentRow
     pages: list[PageInfo] = field(default_factory=list)
-
-    def describe(self) -> str:
-        r = self.row
-        lines = [f"{r.title or '(untitled)'}", f"Subject: {r.subject or '-'}   Added: {r.added}   Pages: {r.pages}",
-                 f"Path: {r.path}", "", f"Summary: {r.summary or '-'}"]
-        flagged = [p for p in self.pages if p.flagged]
-        lines += ["", "Flagged pages:" if flagged else "No pages were flagged."]
-        lines += [f"  {p.line()}" for p in flagged]
-        return "\n".join(lines)
 
 
 def _local_time(stamp: str) -> str:
@@ -125,9 +107,6 @@ class LibraryView:
             out.append(DocumentRow(doc.id, doc.subject, doc.title, _local_time(doc.created_at), doc.page_count,
                                    doc.summary, sum(1 for p in pages if p.flagged), doc.file_path))
         return sorted(out, key=lambda r: r.id, reverse=True)   # newest first
-
-    def table(self, subject: str | None = None) -> list[list]:
-        return [r.as_list() for r in self.rows(subject)]
 
     def detail(self, doc_id: int) -> DocumentDetail | None:
         row = next((r for r in self.rows() if r.id == doc_id), None)

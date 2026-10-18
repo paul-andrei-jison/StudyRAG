@@ -13,7 +13,6 @@ import gradio as gr
 
 HERE = Path(__file__).resolve().parent
 CSS_PATH = HERE / "theme.css"
-SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif'
 SANS = 'system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 
 # Gradio variable -> our token. Both the light and the dark variable point at the same token: the tokens change with the theme.

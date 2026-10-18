@@ -52,10 +52,6 @@ def build_app(rt: Runtime) -> gr.Blocks:
         names = [ALL_SUBJECTS] + subject_names()
         return gr.update(choices=names, value=current if current in names else ALL_SUBJECTS)
 
-    def refresh_choice(current):
-        names = subject_names()
-        return gr.update(choices=names, value=current if current in names else (names[0] if names else None))
-
     def refresh_upload_subject(current):
         names = [AUTO_DETECT] + subject_names()
         return gr.update(choices=names, value=current if current in names else AUTO_DETECT)

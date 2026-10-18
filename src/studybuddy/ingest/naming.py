@@ -66,13 +66,6 @@ def subject_folder(subject: str) -> str:
     return sanitize_component(subject, MAX_SUBJECT_CHARS)
 
 
-def normalise_extension(ext: str) -> str:
-    ext = ext.lower()
-    if ext and not ext.startswith("."):
-        ext = "." + ext
-    return {".jpeg": ".jpg", ".jpe": ".jpg", ".tif": ".tiff"}.get(ext, ext)
-
-
 def library_stem(received_at: datetime, subject: str, title_or_slug: str) -> str:
     """`2026-10-17_1425_Science_photosynthesis-worksheet` (no extension)."""
     return f"{received_at:%Y-%m-%d_%H%M}_{subject_token(subject)}_{slugify(title_or_slug)}"

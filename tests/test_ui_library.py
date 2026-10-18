@@ -8,7 +8,7 @@ from ingest_helpers import make_env, make_photo
 from studybuddy.ingest.results import INDEXED
 from studybuddy.ingest.service import IngestService
 from studybuddy.ui.files import LibraryGuard, PathNotAllowedError
-from studybuddy.ui.library import BUSY_MESSAGE, TABLE_HEADERS, LibraryView
+from studybuddy.ui.library import BUSY_MESSAGE, LibraryView
 
 
 @pytest.fixture
@@ -37,9 +37,8 @@ def test_rows_describe_each_document_newest_first(lab):
     row = rows[0]
     assert (row.subject, row.title, row.pages, row.flagged) == ("Science", "Photosynthesis Worksheet", 1, 0)
     assert row.summary.startswith("Explains how plants") and row.path == second.final_path
-    assert len(row.as_list()) == len(TABLE_HEADERS) and len(row.added) == len("2026-10-18 12:00")
+    assert len(row.added) == len("2026-10-18 12:00")
     assert [r.id for r in view.rows("science")] == [second.doc_id]   # the subject filter ignores case
-    assert view.table()[0][0] == second.doc_id
 
 
 def test_flagged_pages_are_counted_and_explained_in_plain_language(lab):
@@ -50,16 +49,17 @@ def test_flagged_pages_are_counted_and_explained_in_plain_language(lab):
     row = next(r for r in view.rows() if r.id == doc_id)
     assert row.flagged == 2
     detail = view.detail(doc_id)
-    text = detail.describe()
-    assert "Flagged pages:" in text and "the two readers disagree a lot" in text and "ocr_failed" not in text
-    assert "page 1: reading quality 0.40" in text
+    flagged = [p for p in detail.pages if p.flagged]
+    assert [p.page_number for p in flagged] == [1, 2] and flagged[0].quality == 0.4
+    reasons = " ".join(" ".join(p.reasons) for p in flagged)
+    assert "the two readers disagree a lot" in reasons and "ocr_failed" not in reasons
     assert view.detail(9999) is None
 
 
 def test_a_document_with_no_flags_says_so(lab):
     env, service, view = lab
     result = file_one(env, service)
-    assert "No pages were flagged." in view.detail(result.doc_id).describe()
+    assert not [p for p in view.detail(result.doc_id).pages if p.flagged]
 
 
 def test_a_page_opens_through_the_guard(lab):
