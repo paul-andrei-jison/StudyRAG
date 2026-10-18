@@ -285,8 +285,7 @@ class BotFlow:
         waiting = sorted((q for q in self.state.all_questions() if q.chat_id == chat_id and q.stage == AWAITING_OTHER),
                          key=lambda q: q.awaiting_since, reverse=True)
         if not waiting:
-            await self.messenger.send(chat_id, f"Send me photos or PDFs of your handouts ({SUPPORTED}). I'll ask which subject, file them "
-                                               f"and tell you when they are ready. Ask questions about them in the web app.")
+            await self.hint(chat_id)
             return
         try:
             name = self.subjects.find(text) or clean_subject_name(text)
@@ -294,6 +293,10 @@ class BotFlow:
             await self.messenger.send(chat_id, f"{exc} Type another name, or tap Back / Auto-detect.")
             return
         await self._finish(waiting[0], name)
+
+    async def hint(self, chat_id: int) -> None:
+        await self.messenger.send(chat_id, f"Send me photos or PDFs of your handouts ({SUPPORTED}). I'll ask which subject, file them "
+                                           f"and tell you when they are ready. Ask questions about them in the web app.")
 
     async def tick(self) -> None:
         """Called every second or two: retry downloads, ask settled photo groups, apply the 5-minute fallback."""

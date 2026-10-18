@@ -106,6 +106,10 @@ class StubService:
         self.calls: list[dict] = []
         self.jobs = StubJobs()
         self.error: Exception | None = None
+        self.callbacks: list = []
+
+    def add_callback(self, callback):
+        self.callbacks.append(callback)
 
     def submit(self, paths, subject=None, source_kind=None, received_at=None, origin="api", is_album=False, cleanup_sources=True):
         if self.error:
