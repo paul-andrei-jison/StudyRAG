@@ -454,3 +454,54 @@ def test_the_overlap_detector_really_detects_overlap():
     for t in threads:
         t.join()
     assert gate.max_threads > 1
+
+
+def test_try_exclusive_runs_when_idle_and_returns_values(running):
+    _, service, *_ = running
+    future = service.try_exclusive(lambda index: 7)
+    assert future is not None and future.result(timeout=10) == 7
+
+
+def test_try_exclusive_refuses_while_a_job_runs_and_queues_nothing(tmp_path, settings):
+    env, service, _ = build(tmp_path, settings)
+    started, release = threading.Event(), threading.Event()
+    real_process = service.processor.process
+
+    def slow_process(job):
+        started.set()
+        assert release.wait(30)
+        return real_process(job)
+
+    service.processor.process = slow_process
+    service.start()
+    try:
+        ticket = service.submit([photo(env)], subject="Math")
+        assert started.wait(10)
+        assert service.try_exclusive(lambda index: "late") is None
+        assert service.status()["exclusive_waiting"] == 0  # refused, not queued: it must not run later
+        release.set()
+        assert ticket.result(timeout=30).status == INDEXED
+        assert service.wait_idle(10)
+        assert service.try_exclusive(lambda index: "now").result(timeout=10) == "now"
+    finally:
+        release.set()
+        service.stop()
+
+
+def test_try_exclusive_refuses_while_another_action_is_waiting(tmp_path, settings):
+    _, service, _ = build(tmp_path, settings)  # not started: the first action stays queued
+    first = service.try_exclusive(lambda index: 1)
+    assert first is not None and service.try_exclusive(lambda index: 2) is None
+    service.start()
+    try:
+        assert first.result(timeout=10) == 1
+    finally:
+        service.stop()
+
+
+def test_try_exclusive_after_stop_raises(tmp_path, settings):
+    _, service, _ = build(tmp_path, settings)
+    service.start()
+    service.stop()
+    with pytest.raises(StudyBuddyError, match="stopping"):
+        service.try_exclusive(lambda index: 1)

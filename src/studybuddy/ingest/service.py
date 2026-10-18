@@ -132,6 +132,19 @@ class IngestService:
             self._cond.notify_all()
         return future
 
+    def try_exclusive(self, fn: Callable[[Index], T]) -> "Future[T] | None":
+        """Like `run_exclusive`, but never waits behind a running job: returns None at once when the worker is busy
+        (or another action is waiting), and nothing is queued. The UI says "busy, try again" instead of freezing."""
+        future: Future = Future()
+        with self._cond:
+            if self._stopping:
+                raise StudyBuddyError("The ingest service is stopping.")
+            if self._busy or self._exclusive:
+                return None
+            self._exclusive.append((fn, future))
+            self._cond.notify_all()
+        return future
+
     def status(self) -> dict:
         counts = self.jobs.counts()
         counts["busy"] = self._busy
