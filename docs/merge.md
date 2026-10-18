@@ -33,7 +33,8 @@ There is **no `main` yet**, neither on your computer nor on GitHub (`git ls-remo
    git push -u origin main
    ```
    On GitHub: *Settings -> Branches -> Default branch* -> `main`. If you want the repository to be private (recommended: it is a personal study tool), check *Settings -> General -> Danger zone -> Change visibility* **before** pushing anything else.
-5. The `feat/` branches can stay (they are the same commits) or be deleted later: `git push origin --delete feat/foundation feat/reader feat/index` and `git branch -d ...`. Nothing is lost, because `main` contains all of their commits.
+5. The final commit is tagged `v1.0.0` on your computer (an annotated tag, not pushed). To publish it too, only when you say so: `git push origin v1.0.0`. To list it: `git tag -n`.
+6. The `feat/` branches can stay (they are the same commits) or be deleted later: `git push origin --delete feat/foundation feat/reader feat/index` and `git branch -d ...`. Nothing is lost, because `main` contains all of their commits.
 
 ### If a `main` already exists on GitHub by the time you do this
 
