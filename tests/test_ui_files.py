@@ -90,7 +90,7 @@ def test_a_symlink_that_leaves_the_library_is_refused(guard, lib, tmp_path):
     try:
         os.symlink(outside, link)
     except (OSError, NotImplementedError):
-        pytest.skip("cannot create symlinks here")
+        pytest.skip("cannot create symlinks here (Windows needs Developer Mode or an administrator shell); the junction test below covers the same escape")
     with pytest.raises(PathNotAllowedError, match="outside the library"):
         guard.render_page(link)
 

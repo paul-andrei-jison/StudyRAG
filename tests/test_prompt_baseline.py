@@ -8,6 +8,22 @@ import pytest
 from studybuddy.reader import prompt_baseline as pb
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def find_sh() -> str | None:
+    """`sh` from PATH, or the one that ships with Git for Windows (often not on PATH in plain PowerShell)."""
+    found = shutil.which("sh")
+    git = shutil.which("git")
+    if found or not git:
+        return found
+    for sub in ("bin", "usr/bin"):
+        candidate = Path(git).resolve().parents[1] / sub / "sh.exe"
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+SH = find_sh()
 GOOD = {"prompt_sha256": "abc", "recorded": "2026-10-17", "reader_model": "m", "pages": 2,
         "reader_cer": 0.03, "reader_wer": 0.06}
 
@@ -70,7 +86,7 @@ def test_record_baseline_refuses_when_nothing_scored(tmp_path):
     assert not (tmp_path / "b.json").exists()
 
 
-@pytest.mark.skipif(shutil.which("sh") is None or shutil.which("git") is None, reason="needs sh and git")
+@pytest.mark.skipif(SH is None or shutil.which("git") is None, reason="needs sh and git")
 @pytest.mark.parametrize("message,ok", [("feat: tune prompt\n", False),
                                         ("feat: tune prompt\n\nBake-off: qwen, 3 pages, CER 0.05 (was 0.07)\n", True),
                                         ("feat: tune prompt\n\nBake-off:\n", False)])
@@ -85,15 +101,15 @@ def test_commit_msg_hook_requires_bakeoff_line_when_baseline_changes(tmp_path, m
     msg = tmp_path / "MSG"
     msg.write_text(message)
     hook = ROOT / "scripts" / "git-hooks" / "commit-msg"
-    run = subprocess.run(["sh", hook.as_posix(), "MSG"], cwd=tmp_path, capture_output=True, text=True)
+    run = subprocess.run([SH, hook.as_posix(), "MSG"], cwd=tmp_path, capture_output=True, text=True)
     assert (run.returncode == 0) == ok, run.stderr
 
 
-@pytest.mark.skipif(shutil.which("sh") is None or shutil.which("git") is None, reason="needs sh and git")
+@pytest.mark.skipif(SH is None or shutil.which("git") is None, reason="needs sh and git")
 def test_commit_msg_hook_ignores_commits_that_do_not_touch_the_baseline(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
     (tmp_path / "x.txt").write_text("x")
     subprocess.run(["git", "add", "x.txt"], cwd=tmp_path, check=True, capture_output=True)
     (tmp_path / "MSG").write_text("chore: unrelated\n")
     hook = ROOT / "scripts" / "git-hooks" / "commit-msg"
-    assert subprocess.run(["sh", hook.as_posix(), "MSG"], cwd=tmp_path).returncode == 0
+    assert subprocess.run([SH, hook.as_posix(), "MSG"], cwd=tmp_path).returncode == 0
