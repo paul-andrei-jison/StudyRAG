@@ -27,7 +27,7 @@ MIN_TARGET = 44
 JS_OVERFLOW = "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
 JS_SMALL_TARGETS = """
 (min) => [...document.querySelectorAll('#sb-root button, #sb-root [role=tab], #sb-root a[href], #sb-root input:not([type=hidden]):not([type=file]), #sb-root textarea')]
-  .filter(e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+  .filter(e => { const t = (e.matches('input') && e.closest('label')) || (e.matches('input') && e.closest('.wrap')) || e; const r = t.getBoundingClientRect(); const s = getComputedStyle(e);
                  return !e.closest('.visually-hidden') && r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && (r.height < min - 0.5 || r.width < min - 0.5); })
   .map(e => (e.id || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().slice(0, 40) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height))
 """

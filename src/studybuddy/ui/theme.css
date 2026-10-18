@@ -236,7 +236,7 @@ main.app { padding: 0 !important; }
   cursor: pointer;
 }
 #sb-chips label:hover, #sb-which label:hover { background: var(--surface); }
-#sb-chips label input, #sb-which label input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+#sb-chips label input, #sb-which label input { position: absolute; opacity: 0; top: -1px; left: -1px; width: calc(100% + 2px); height: calc(100% + 2px); margin: 0; cursor: pointer; }
 #sb-chips label:has(input:checked) { background: var(--surface); border-color: var(--accent-text); color: var(--accent-text); font-weight: 500; }
 #sb-chips label:has(input:focus-visible), #sb-which label:has(input:focus-visible) { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 #sb-which label { border-radius: var(--r-md); background: var(--surface); }
@@ -292,7 +292,7 @@ main.app { padding: 0 !important; }
 #sb-lib { gap: 14px !important; }
 #sb-lib-bar { display: flex !important; flex-direction: row !important; flex-wrap: wrap; gap: 10px; align-items: center; }
 #sb-search { flex: 1 1 260px !important; background: var(--surface) !important; border: 1px solid var(--line-strong) !important; border-radius: var(--r-md) !important; padding: 0 12px !important; box-shadow: none !important; }
-#sb-search textarea, #sb-search input { border: 0 !important; background: transparent !important; box-shadow: none !important; min-height: 42px; }
+#sb-search textarea, #sb-search input { border: 0 !important; background: transparent !important; box-shadow: none !important; min-height: 44px; }
 #sb-lib-subject { flex: 0 1 220px !important; margin: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
 #sb-lib-subject .wrap, #sb-lib-subject input { background: var(--surface); min-height: 44px; font-size: var(--text-small); }
 #sb-lib-subject .wrap { border: 1px solid var(--line-strong) !important; border-radius: var(--r-pill); padding-left: 8px; box-shadow: none !important; }
@@ -330,7 +330,7 @@ main.app { padding: 0 !important; }
 #sb-confirm .row { gap: 8px; }
 #sb-pages .wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 #sb-pages label { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); background: var(--sunk); border: 1px solid var(--line-strong); font-size: var(--text-small); cursor: pointer; }
-#sb-pages label input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+#sb-pages label input { position: absolute; opacity: 0; top: -1px; left: -1px; width: calc(100% + 2px); height: calc(100% + 2px); margin: 0; cursor: pointer; }
 #sb-pages label:has(input:checked) { background: var(--surface); border-color: var(--accent-text); color: var(--accent-text); font-weight: 500; }
 #sb-pages label:has(input:focus-visible) { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 #sb-pages, #sb-pages .form { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
@@ -350,6 +350,11 @@ main.app { padding: 0 !important; }
 #sb-drop table, #sb-drop .file-preview { font-size: var(--text-small); }
 #sb-add-subject, #sb-album { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
 #sb-add-btn { align-self: flex-start; min-width: 160px; }
+#sb-album label { min-height: 44px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+#sb-root input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent-fill); }
+/* every dropdown: the whole field is the target */
+#sb-root .secondary-wrap, #sb-root .wrap-inner { min-height: 44px; }
+#sb-root .secondary-wrap input { min-height: 44px; }
 #sb-added .sb-outcome { background: var(--sunk); border-left: 4px solid var(--accent-text); border-radius: var(--r-md); padding: 14px 16px; font-size: var(--text-answer); }
 #sb-added .sb-outcome-bad { background: var(--warn-bg); border-left-color: var(--warn); }
 

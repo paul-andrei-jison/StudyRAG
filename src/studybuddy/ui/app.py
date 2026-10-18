@@ -126,10 +126,10 @@ def build_app(rt: Runtime) -> gr.Blocks:
                                              elem_id="sb-chat", group_consecutive_messages=False, autoscroll=True)
                         chips = gr.Radio([], label="Sources", elem_id="sb-chips", interactive=True, visible=False)
                         closest_btn = gr.Button("Show the closest pages", elem_id="sb-closest", size="sm", visible=False)
-                        which = gr.Radio([], label="Pick one", elem_id="sb-which", interactive=True, visible=False)
+                        which = gr.Radio([], label="Which paper?", show_label=False, elem_id="sb-which", interactive=True, visible=False)
                     with gr.Column(elem_id="sb-slip-col", visible=False) as slip_col, gr.Group(elem_id="sb-slip"):
                         page_image = gr.Image(type="pil", format="jpeg", interactive=False, show_label=False, container=False,
-                                              elem_id="sb-slip-image", show_download_button=False, show_fullscreen_button=True)
+                                              elem_id="sb-slip-image", show_download_button=False, show_fullscreen_button=False)
                         slip_note = gr.HTML(elem_id="sb-slip-note", padding=False)
                         with gr.Accordion("Text read from this page", open=False, elem_id="sb-slip-text"):
                             page_text = gr.Textbox(show_label=False, lines=8, interactive=False, container=False)
@@ -264,7 +264,7 @@ def build_app(rt: Runtime) -> gr.Blocks:
                                     keep_btn = gr.Button("Keep it")
                             page_pick = gr.Radio([], label="Pages", elem_id="sb-pages", interactive=True)
                             lib_image = gr.Image(type="pil", format="jpeg", interactive=False, show_label=False, container=False,
-                                                 elem_id="sb-paper-image", show_download_button=False, show_fullscreen_button=True)
+                                                 elem_id="sb-paper-image", show_download_button=False, show_fullscreen_button=False)
                             lib_image_note = gr.HTML(elem_id="sb-paper-note", padding=False)
                 selected_id = gr.Number(visible="hidden", elem_id="sb-pick", precision=0)
 
