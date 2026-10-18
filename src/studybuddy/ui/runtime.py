@@ -34,6 +34,7 @@ class Runtime:
     watcher: InboxWatcher | None = None
     chat_config: ChatConfig | None = None
     gate: GateConfig | None = None   # None: the calibrated default
+    bot: Any = None                  # the Telegram bot (start()/stop()), or None when it is off
 
     def __post_init__(self) -> None:
         self.guard = LibraryGuard(self.settings.library_dir)
@@ -47,6 +48,8 @@ class Runtime:
 
     def start(self) -> "Runtime":
         sweep_empty_uploads(uploads_dir(self.service))
+        if self.bot is not None:
+            self.bot.start()          # first, so its result callback is in place before recovered jobs can finish
         self.service.start()
         self.service.run_exclusive(self._settle_interrupted_moves).add_done_callback(self._log_settled)
         if self.watcher is not None:
@@ -67,6 +70,8 @@ class Runtime:
 
     def close(self) -> None:
         """Orderly shutdown: stop looking for files, let the document being read finish, then close the stores."""
+        if self.bot is not None:
+            self.bot.stop()
         if self.watcher is not None:
             self.watcher.stop()
         self.service.stop()
@@ -76,7 +81,7 @@ class Runtime:
             close()
 
 
-def build_runtime(settings: Settings, use_ocr: bool = True) -> Runtime:
+def build_runtime(settings: Settings, use_ocr: bool = True, with_bot: bool = False) -> Runtime:
     """The real thing. Raises a StudyBuddyError (bad folders, embedding model changed, ...) for the caller to print."""
     from ..llm import LMStudioClient
     from ..reader.ocr import RapidOcrEngine
@@ -91,4 +96,9 @@ def build_runtime(settings: Settings, use_ocr: bool = True) -> Runtime:
         client.close()
         raise
     service = IngestService(settings, index, Reader(client), RapidOcrEngine() if use_ocr else None, client, subjects)
-    return Runtime(settings, client, index, subjects, service, InboxWatcher(service))
+    bot = None
+    if with_bot:
+        from ..bot.telegram_app import TelegramBot
+
+        bot = TelegramBot(settings, service, subjects)
+    return Runtime(settings, client, index, subjects, service, InboxWatcher(service), bot=bot)

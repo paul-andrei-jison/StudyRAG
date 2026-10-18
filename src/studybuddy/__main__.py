@@ -12,6 +12,13 @@ import sys
 from typing import Sequence
 
 
+def bot_line(plan, settings) -> str:
+    """One line for the console: whether the Telegram bot runs and for whom (never the token)."""
+    if not plan.enabled:
+        return f"  telegram: off ({plan.reason})"
+    return f"  telegram: on (long polling; answers only user id {settings.telegram_user_id})"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")   # before gradio is imported
     parser = argparse.ArgumentParser(prog="python -m studybuddy", description="Run the Study Buddy web app.")
@@ -26,11 +33,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         settings = load_settings()
         install_log_safety([settings.telegram_token])      # the bot token never reaches a log line
-        bot_plan(settings, args.no_bot)                    # a token without SB_TELEGRAM_USER_ID stops the start here
+        plan = bot_plan(settings, args.no_bot)             # a token without SB_TELEGRAM_USER_ID stops the start here
         warning = network_exposure(settings.host)
         from .ui.runtime import build_runtime
 
-        runtime = build_runtime(settings, use_ocr=not args.no_ocr)
+        runtime = build_runtime(settings, use_ocr=not args.no_ocr, with_bot=plan.enabled)
     except StudyBuddyError as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
@@ -44,6 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         runtime.start()
         print(f"Study Buddy is starting at http://{settings.host}:{settings.port}  (Ctrl+C to stop)", flush=True)
         print(f"  library: {settings.library_dir}\n  data:    {settings.data_dir}", flush=True)
+        print(bot_line(plan, settings), flush=True)
         launch(build_app(runtime), settings.host, settings.port, prevent_thread_lock=False)
     except OSError as exc:
         print(f"[FAIL] cannot listen on {settings.host}:{settings.port} ({exc}). Is another copy running? "

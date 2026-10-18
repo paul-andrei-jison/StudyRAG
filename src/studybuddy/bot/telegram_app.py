@@ -107,6 +107,7 @@ class TelegramBot:
         self._stop: asyncio.Event | None = None
         self._clock = clock
         self._callback_registered = False
+        self._accepting = False                      # results are taken from the ingest worker once the flow has reconciled
 
     # ---- building the application -----------------------------------------------------------------------
 
@@ -207,9 +208,15 @@ class TelegramBot:
     def _on_ingest_result(self, result: IngestResult) -> None:
         """Called on the ingest worker's thread: hand the result to the bot's loop."""
         loop = self._loop
-        if loop is None or not loop.is_running() or self.flow is None:
-            return                                   # the bot is not up; `BotFlow.start()` reconciles on the next start
-        asyncio.run_coroutine_threadsafe(self.flow.on_result(result), loop)
+        if not self._accepting or loop is None or not loop.is_running() or self.flow is None:
+            return                                   # the bot is not up; `BotFlow.start()` reconciles when it is
+        future = asyncio.run_coroutine_threadsafe(self.flow.on_result(result), loop)
+        future.add_done_callback(self._log_result_error)
+
+    @staticmethod
+    def _log_result_error(future) -> None:
+        if not future.cancelled() and future.exception() is not None:
+            log.error("could not tell the student about a result: %s: %s", type(future.exception()).__name__, future.exception())
 
     async def _main(self) -> None:
         self._loop, self._stop = asyncio.get_running_loop(), asyncio.Event()
@@ -233,6 +240,7 @@ class TelegramBot:
             if self._stop.is_set():
                 return
             await self.flow.start()
+            self._accepting = True
             await app.start()
             await app.updater.start_polling(drop_pending_updates=False, allowed_updates=["message", "callback_query"])
             self.status = f"connected as @{app.bot.username}"
@@ -255,6 +263,7 @@ class TelegramBot:
             await asyncio.sleep(self.tick_seconds)
 
     async def _shutdown(self, app: Application) -> None:
+        self._accepting = False
         for step in (app.updater.stop if app.updater and app.updater.running else None, app.stop if app.running else None, app.shutdown):
             if step is None:
                 continue
