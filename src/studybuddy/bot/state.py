@@ -62,6 +62,11 @@ class Question:
     stage: str = OPEN
     created_at: float = 0.0
     settle_until: float = 0.0                            # a photo group is asked about only after no more photos arrive
+    asked: bool = False                                  # the question message has been sent
+    group_key: str | None = None                         # media_group_id: late photos of the same group join an open question
+    awaiting_since: float = 0.0                          # when "Other..." was tapped (the next text message is the subject)
+    caption_subject: str | None = None                   # a caption that names a known subject: used without asking
+    caption_suggestion: str | None = None                # a caption that is a valid NEW subject name: offered as one button
 
 
 T = TypeVar("T", Item, Question)
