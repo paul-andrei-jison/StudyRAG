@@ -22,7 +22,7 @@ from ..ingest.subjects import SubjectError, SubjectList
 from ..llm import StreamEnd
 from .answers import ANSWERED, ERROR, NEEDS_CHOICE, NOT_IN_PAPERS_STATUS, OVERVIEW, ChatAnswer, Progress, Source
 from .budget import TokenEstimator, minimum_context, plan_budget, resolve_context_tokens, too_small
-from .condense import CONDENSED, SUMMARY, condense_page, plan_document
+from .condense import CONDENSED, GROUP_PAGES, SUMMARY, condense_group, plan_document
 from .citations import CitationFilter
 from .expand import expand_query, fuse_searches
 from .gate import GateConfig, assess, coverage
@@ -250,12 +250,16 @@ class ChatSession:
                 answer.overview_notes.append(
                     f"'{doc.title}' has {len(drafts)} pages, so I summarized each page first, then combined them; fine details may be missing.")
                 fallbacks = 0
-                for number, draft in enumerate(drafts, 1):
-                    yield Progress(f"Summarizing page {number} of {len(drafts)} of '{doc.title}' first...")
-                    result = condense_page(self.client, draft.text, plan.page_chars, self.estimator)
-                    draft.text = result.text
-                    answer.model_calls_condensing += result.called
-                    fallbacks += result.fell_back
+                for start in range(0, len(drafts), GROUP_PAGES):
+                    group = drafts[start:start + GROUP_PAGES]
+                    first, last = start + 1, start + len(group)
+                    yield Progress(f"Summarizing page {first} of {len(drafts)} of '{doc.title}' first..." if first == last else
+                                   f"Summarizing pages {first}-{last} of {len(drafts)} of '{doc.title}' first...")
+                    done = condense_group(self.client, [(start + i, d.text) for i, d in enumerate(group, 1)], plan.page_chars, self.estimator)
+                    for i, draft in enumerate(group, 1):
+                        draft.text = done.pages[start + i].text
+                        fallbacks += done.pages[start + i].fell_back
+                    answer.model_calls_condensing += done.calls
                 if fallbacks:
                     answer.overview_notes.append(f"{fallbacks} page(s) of '{doc.title}' could not be summarized and were only shortened.")
             elif plan.tier == SUMMARY:

@@ -190,7 +190,7 @@ def test_condensing_shows_progress_and_never_the_waking_message(setup):
     updates = list(stream_turn(session, "summarize this reviewer", "Math", wake_after=0.05, search_after=0.01, poll=0.02))
     phases = [u.phase for u in updates]
     assert WORKING in phases and WAKING not in phases[phases.index(WORKING):]
-    assert any("Summarizing page 2 of 4 of 'Long reviewer'" in u.text for u in updates if u.phase == WORKING)
+    assert any("Summarizing pages 1-4 of 4 of 'Long reviewer'" in u.text for u in updates if u.phase == WORKING)
     assert updates[-1].phase == DONE and updates[-1].answer.mode == "overview"
     assert "summarized each page first" in updates[-1].text
 
