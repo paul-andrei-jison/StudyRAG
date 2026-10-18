@@ -87,15 +87,20 @@ The list of subjects is in `subjects.json` (Math, Science, English, History, Fil
 ## Daily use
 
 1. Double-click **`start.bat`**. It checks LM Studio and the models and starts Study Buddy. Keep the window open.
-2. Open **http://127.0.0.1:7860** in your browser.
-3. **Send pages**: in Telegram send photos (or PDFs) to your bot.
-   - Tap the subject button. If you do not answer within 5 minutes it uses Auto-detect and tells you.
-   - Several photos sent together get **one** question and are filed as separate documents. If they are pages of one handout, tap **Make these one document**.
+2. Open **http://127.0.0.1:7860** in your browser. There are three areas: **Ask**, **Library** and **Add**.
+3. **Send pages**: in Telegram send photos (or PDFs) to your bot, or use **Add** in the browser.
+   - In Telegram tap the subject button. If you do not answer within 5 minutes it lets Study Buddy decide and tells you.
+   - Several photos sent together get **one** question and are filed as separate papers. If they are pages of one handout, tap **Make these one document**. In the browser, turn on **These pages belong together**.
    - For small print or messy handwriting, send the photo **as a file** (the paperclip, then File) so Telegram does not shrink it.
    - When a page is ready you get a message with the file name, subject, number of pages and any page that was hard to read. Handwritten names, dates, scores and answer letters may be read wrongly: always check those against your photo.
-4. **Ask questions** in the **Chat** tab. Click a source to see the page and the text read from it. Use the subject filter to search one subject. You can also ask about a whole paper ("What is this worksheet about?").
-5. **Library** tab: see everything, change a subject, delete an entry from the index (your original photo is never deleted).
-6. When you finish, close the window (or press Ctrl+C). It finishes the page it is reading first.
+4. **Ask** a question. Pick a subject first if you like. The answer shows small numbered chips; choose one to see the real page next to the answer (below it on a phone). You can also ask about a whole paper ("What is this worksheet about?"). If it says "I couldn't find that in your papers", **Show the closest pages** lists what it looked at. **New chat** starts over.
+5. **Library**: search your papers, open one to read its summary and see its pages. Under **More actions** you can change its subject or remove it from Study Buddy (your original file always stays in your folder).
+6. **The corner indicator** shows what Study Buddy is doing:
+   - **"2 being read"**: papers are being read now or waiting their turn. Nothing to do.
+   - **"1 needs a look"**: a paper could not be read. Open the indicator and press **Retry**, or add a clearer photo.
+   - **"Waiting for LM Studio"**: LM Studio is off, or no model is loaded. Open LM Studio, load the models, start its server. Waiting papers carry on by themselves; you do not need to send them again.
+   - Nothing shown means everything is done. The little half-moon button switches dark and light mode.
+7. When you finish, close the window (or press Ctrl+C). It finishes the page it is reading first.
 
 To start with Windows: [docs/start.md](docs/start.md).
 
@@ -121,7 +126,7 @@ Start with `.\.venv\Scripts\python.exe -m studybuddy --check`. It says what is w
 | A model is "not loaded" | Load it in LM Studio. The name must match `.env` exactly (copy it from LM Studio's list). |
 | The bot does not answer | Is Study Buddy running (the `start.bat` window)? Does the window say `telegram: on`? Is the token right and `SB_TELEGRAM_USER_ID` your own id? Only one copy may run at a time. The log (below) says more. |
 | I sent photos while the computer was asleep or off | Telegram keeps them for about a day. When Study Buddy runs again they are picked up. Photos saved on arrival are never lost, even if the computer restarts. |
-| The computer went to sleep during a long read | It continues after waking. If a document shows as failed, use **Retry failed** in the web page's Status panel. |
+| The computer went to sleep during a long read | It continues after waking. If a paper shows as "needs a look" in the corner, open it and press **Retry**. |
 | "I already have this one" | You sent a page that is already filed (identical file). Nothing was added; the message names the existing copy. A different photo of the same page is a new document. |
 | The page was read badly | Retake it in good light, flat and straight, or send it **as a file**. Pages the program doubts are listed in the reply and in the Library tab. |
 | An answer has no source or seems wrong | Check the page it shows. Answers without a source are marked. Trust the page, not the answer. |

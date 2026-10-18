@@ -30,9 +30,9 @@ Subject buttons come from the live subject list, then **Other...** (your next te
 No answer within **5 minutes**: auto-detect, and the message says so.
 
 When a job ends you get one reply per document (per album):
-**indexed**: the filed name, subject (marked auto-detected, or Unsorted with a pointer to the Library tab), title, page count, every flagged page with its reason in plain words (a "retake it or send it as a file" hint when a resend would help), any ingest warnings, and **always** "Handwritten names, dates, scores and answer letters may be read wrongly: check them against the photo."
+**indexed**: the filed name, subject (marked auto-detected, or Unsorted with a pointer to the Library screen), title, page count, every flagged page with its reason in plain words (a "retake it or send it as a file" hint when a resend would help), any ingest warnings, and **always** "Handwritten names, dates, scores and answer letters may be read wrongly: check them against the photo."
 **duplicate**: "I already have this one: '<title>' (<subject>, N pages)... the new copy is kept in <duplicates folder>".
-**failed**: the reason, and where the file is kept (retry from the Status panel). **deferred** (LM Studio off): the file is saved and it retries by itself.
+**failed**: the reason, and where the file is kept (use Retry in the corner indicator of the web page). **deferred** (LM Studio off): the file is saved and it retries by itself.
 
 ## Decisions to know
 
@@ -63,7 +63,7 @@ With the app running (`telegram: on`), send from your phone, one at a time, and 
 7. Send a photo, close the app before answering, start it again: the buttons still work.
 8. Put the computer to sleep for a few minutes, send a photo from the phone, wake it: it is picked up.
 9. Have another Telegram account message the bot: no reply, and the app log shows `ignored a message from an unauthorised sender (id ...)`.
-10. Library tab: change the subject of a filed document; the file moves to the new folder and a page still opens.
+10. Library screen: change the subject of a filed document; the file moves to the new folder and a page still opens.
 
 ## Known limits
 

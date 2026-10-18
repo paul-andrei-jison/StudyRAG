@@ -15,6 +15,10 @@ The window must stay open while you use the app. Close it (or press Ctrl+C) to s
 
 ## Start with Windows
 
+**Easiest:** run `powershell -ExecutionPolicy Bypass -File scripts\install_startup.ps1 -Action add` in the project folder. It does nothing until you run it, then creates one shortcut, `Study Buddy.lnk`, in your Startup folder that runs `start.bat wait` minimized. `-Action status` shows whether it is there and where it points; `-Action remove` deletes only that shortcut. To check: press `Win + R`, type `shell:startup`, Enter, and look for "Study Buddy"; then sign out and in.
+
+**By hand:**
+
 1. Press `Win + R`, type `shell:startup`, press Enter. A folder opens.
 2. In the project folder, right-click `start.bat` -> *Show more options* -> *Create shortcut*, and move the shortcut into the startup folder.
 3. Right-click the shortcut -> *Properties*. In **Target** add a space and the word `wait` after the path (`...\start.bat" wait`). In **Run** choose *Minimized*.
