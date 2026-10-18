@@ -28,11 +28,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from .config import bot_plan, load_settings, network_exposure
     from .errors import StudyBuddyError
+    from .logging_setup import setup_logging
     from .logsafe import install_log_safety
 
     try:
         settings = load_settings()
         install_log_safety([settings.telegram_token])      # the bot token never reaches a log line
+        log_file = setup_logging(settings)
         plan = bot_plan(settings, args.no_bot)             # a token without SB_TELEGRAM_USER_ID stops the start here
         warning = network_exposure(settings.host)
         from .ui.runtime import build_runtime
@@ -50,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         runtime.start()
         print(f"Study Buddy is starting at http://{settings.host}:{settings.port}  (Ctrl+C to stop)", flush=True)
-        print(f"  library: {settings.library_dir}\n  data:    {settings.data_dir}", flush=True)
+        print(f"  library: {settings.library_dir}\n  data:    {settings.data_dir}\n  log:     {log_file}", flush=True)
         print(bot_line(plan, settings), flush=True)
         launch(build_app(runtime), settings.host, settings.port, prevent_thread_lock=False)
     except OSError as exc:

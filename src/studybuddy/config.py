@@ -45,6 +45,7 @@ class Settings:
     host: str = DEFAULT_HOST           # where the web UI listens; anything but loopback is reachable from the network
     port: int = DEFAULT_PORT
     telegram_enabled: bool = True      # SB_TELEGRAM_ENABLED; the bot also needs a token and the student's user id
+    log_level: str = "INFO"            # SB_LOG_LEVEL for the log file (see logging_setup.py)
 
 
 def _path(value: str) -> Path:
@@ -119,6 +120,10 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
     if telegram_raw not in ("1", "0", "true", "false", "yes", "no", "on", "off"):
         raise ConfigError("SB_TELEGRAM_ENABLED must be 1/0, true/false, yes/no or on/off")
 
+    log_level = (get("SB_LOG_LEVEL", "INFO") or "INFO").upper()
+    if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+        raise ConfigError("SB_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR")
+
     subjects = Path(get("SB_SUBJECTS_FILE", "subjects.json")).expanduser()
     if not subjects.is_absolute():
         subjects = repo_root / subjects
@@ -145,6 +150,7 @@ def load_settings(env: Mapping[str, str] | None = None, repo_root: Path = REPO_R
         host=get("SB_HOST", DEFAULT_HOST),
         port=port,
         telegram_enabled=telegram_raw in ("1", "true", "yes", "on"),
+        log_level=log_level,
     )
 
 
