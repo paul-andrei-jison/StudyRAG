@@ -235,12 +235,106 @@ def run(out: Path, only: list[str] | None, variant: str | None = None) -> int:
     return 1 if failures else 0
 
 
+# ---- behaviour checks: theme toggle, system theme, keyboard focus, reduced motion ---------------------------------------------
+
+JS_FOCUS = r"""
+() => { const e = document.activeElement; if (!e || e === document.body) return null;
+  const own = getComputedStyle(e); const label = e.closest('label'); const lab = label ? getComputedStyle(label) : null;
+  const ring = (s) => s && s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 2;
+  return { name: (e.id || e.getAttribute('aria-label') || e.textContent || e.tagName).trim().slice(0, 40), ok: ring(own) || ring(lab) }; }
+"""
+
+
+def run_checks() -> int:
+    from playwright.sync_api import sync_playwright
+
+    results: list[tuple[str, bool, str]] = []
+
+    def record(name: str, ok: bool, detail: str = "") -> None:
+        results.append((name, bool(ok), detail))
+
+    with tempfile.TemporaryDirectory(prefix="sb-checks-", ignore_cleanup_errors=True) as tmp, sync_playwright() as pw:
+        demo = build_demo(Path(tmp))
+        browser = pw.chromium.launch(channel="msedge", headless=True)
+        try:
+            # 1. the system's dark setting is followed without a click
+            ctx = browser.new_context(color_scheme="dark", viewport={"width": 1280, "height": 800})
+            page = ctx.new_page()
+            page.goto(demo.url)
+            wait_app(page)
+            record("follows a dark system setting", page.evaluate("document.documentElement.dataset.theme") == "dark")
+            # 2. the toggle switches, and the choice is remembered after a reload
+            page.locator("#sb-theme").click()
+            page.wait_for_timeout(200)
+            record("toggle switches to light", page.evaluate("document.documentElement.dataset.theme") == "light")
+            page.reload()
+            wait_app(page)
+            record("the choice is remembered", page.evaluate("document.documentElement.dataset.theme") == "light")
+            bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+            record("light background is cream", bg == "rgb(250, 249, 245)", bg)
+            page.locator("#sb-theme").click()
+            page.wait_for_timeout(200)
+            bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
+            record("dark background is warm dark", bg == "rgb(31, 30, 27)", bg)
+            ctx.close()
+
+            # 3. keyboard: every stop has a visible focus ring, and a chip can be chosen without a mouse
+            ctx = browser.new_context(viewport={"width": 390, "height": 844})
+            page = ctx.new_page()
+            page.goto(demo.url)
+            wait_app(page)
+            page.locator("#sb-question textarea").fill("How does water evaporate in the water cycle?")
+            page.locator("#sb-send").click()
+            page.wait_for_selector("#sb-chips label", state="visible", timeout=30000)
+            page.locator("body").click(position={"x": 5, "y": 5})
+            bad, stops = [], 0
+            for _ in range(24):
+                page.keyboard.press("Tab")
+                info = page.evaluate(JS_FOCUS)
+                if info:
+                    stops += 1
+                    if not info["ok"]:
+                        bad.append(info["name"])
+            record("every keyboard stop shows a focus ring", stops > 8 and not bad, f"{stops} stops; without a ring: {sorted(set(bad))[:5]}")
+            page.locator("#sb-chips label input").first.focus()
+            page.keyboard.press("Space")
+            try:
+                page.wait_for_selector("#sb-slip-image img", state="visible", timeout=10000)
+                record("a source chip opens with the keyboard", True)
+            except Exception:
+                record("a source chip opens with the keyboard", False)
+            ctx.close()
+
+            # 4. reduced motion: nothing animates
+            ctx = browser.new_context(reduced_motion="reduce", viewport={"width": 1280, "height": 800})
+            page = ctx.new_page()
+            page.goto(demo.url)
+            wait_app(page)
+            page.locator("#sb-question textarea").fill("How does water evaporate in the water cycle?")
+            page.locator("#sb-send").click()
+            page.wait_for_selector("#sb-chips label", state="visible", timeout=30000)
+            page.locator("#sb-chips label").first.click()
+            page.wait_for_selector("#sb-slip-image img", state="visible", timeout=10000)
+            animation = page.evaluate("getComputedStyle(document.getElementById('sb-slip')).animationName")
+            record("reduced motion: the slip does not animate", animation == "none", animation)
+            ctx.close()
+        finally:
+            browser.close()
+            demo.close()
+    for name, ok, detail in results:
+        print(safe(f"{'ok ' if ok else 'FAIL'} {name}{'  ' + detail if detail and not ok else ''}"))
+    return 0 if all(ok for _, ok, _ in results) else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("out", nargs="?", default=None)
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--checks", action="store_true", help="run the behaviour checks (theme toggle, focus ring, reduced motion) instead of screenshots")
     parser.add_argument("--variant", default=None, help="size-mode, e.g. phone-dark (used internally for isolated scenes)")
     args = parser.parse_args()
+    if args.checks:
+        return run_checks()
     out = Path(args.out) if args.out else Path(tempfile.gettempdir()) / "sb-screenshots"
     return run(out, args.only, args.variant)
 

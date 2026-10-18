@@ -355,6 +355,9 @@ main.app { padding: 0 !important; }
 /* every dropdown: the whole field is the target */
 #sb-root .secondary-wrap, #sb-root .wrap-inner { min-height: 44px; }
 #sb-root .secondary-wrap input { min-height: 44px; }
+#sb-subject .wrap, #sb-lib-subject .wrap { padding: 0 8px !important; height: 44px; box-sizing: border-box; display: flex; align-items: center; }
+#sb-subject .wrap-inner, #sb-lib-subject .wrap-inner, #sb-subject .secondary-wrap, #sb-lib-subject .secondary-wrap { min-height: 0; height: 100%; width: 100%; display: flex; align-items: center; padding: 0 !important; }
+#sb-subject input, #sb-lib-subject input { min-height: 0 !important; height: 100%; padding: 0 8px !important; }
 #sb-added .sb-outcome { background: var(--sunk); border-left: 4px solid var(--accent-text); border-radius: var(--r-md); padding: 14px 16px; font-size: var(--text-answer); }
 #sb-added .sb-outcome-bad { background: var(--warn-bg); border-left-color: var(--warn); }
 
