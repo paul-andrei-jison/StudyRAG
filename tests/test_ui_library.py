@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from chat_helpers import add_doc
-from ingest_helpers import FakeReader, make_env, make_photo
+from ingest_helpers import make_env, make_photo
 from studybuddy.ingest.results import INDEXED
 from studybuddy.ingest.service import IngestService
 from studybuddy.ui.files import LibraryGuard, PathNotAllowedError

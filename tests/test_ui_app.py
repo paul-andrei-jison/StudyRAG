@@ -10,7 +10,6 @@ from PIL import Image
 
 from chat_helpers import LAX_GATE, ScriptedClient
 from ingest_helpers import PAGE_TEXT, FakeReader, make_env, make_photo
-from studybuddy.errors import TransientLLMError
 from studybuddy.ingest.service import IngestService
 from studybuddy.ui.app import ALL_SUBJECTS, build_app, exposure_banner, launch
 from studybuddy.ui.runtime import Runtime

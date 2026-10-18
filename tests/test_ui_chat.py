@@ -2,7 +2,7 @@ import threading
 
 import pytest
 
-from chat_helpers import LAX_GATE, ScriptedClient, add_doc, make_setup
+from chat_helpers import ScriptedClient, add_doc, make_setup
 from ingest_helpers import make_photo
 from studybuddy.chat.answers import ANSWERED, NOT_IN_PAPERS_STATUS
 from studybuddy.chat.gate import GateConfig
