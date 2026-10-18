@@ -82,17 +82,19 @@ def timing(settings, client, real_index, counter):
         subjects = SubjectList(scratch_settings.data_dir / "subjects.json", ["Science", "Math", "History"])
         scratch = Index.open(scratch_settings, client)
         try:
-            pages14 = [f"Page {i} of the reviewer.\n{block}" for i in range(1, 15)]
+            est = TokenEstimator()
+            ctx = counter.context_length(settings.chat_model) or 0
+            available = ctx - settings.chat_max_answer_tokens - est.estimate(OVERVIEW_SYSTEM_PROMPT) - 30
+            # the reviewer must NOT fit whole, or condensing is never measured: repeat the sample text until it overflows by half
+            repeat = max(1, -(-int(available * 1.5) // (14 * max(1, est.estimate(block)))))
+            pages14 = [f"Page {i} of the reviewer.\n" + "\n\n".join([block] * repeat) for i in range(1, 15)]
             pages40 = [f"Page {i} of the book. {texts[i % len(texts)]}" for i in range(1, 41)]
             add_synthetic(scratch, "rev14", "Math", "Synthetic 14-page reviewer", pages14, "A synthetic reviewer built from the sample pages.")
             real_summaries = " ".join(d.summary for d in real_index.documents() if d.summary)
             add_synthetic(scratch, "book40", "History", "Synthetic 40-page book", pages40, real_summaries)
-            est = TokenEstimator()
-            ctx = counter.context_length(settings.chat_model) or 0
             for name, subject, pages in (("condensed (14 pages)", "Math", pages14), ("stored summary (40 pages)", "History", pages40)):
                 doc = next(d for d in scratch.documents() if d.subject == subject)
                 costs = [est.estimate(format_source(_source_of(doc, i, t))) for i, t in enumerate(pages, 1)]
-                available = ctx - settings.chat_max_answer_tokens - est.estimate(OVERVIEW_SYSTEM_PROMPT) - 30
                 counter.reset()
                 answer, seconds = ask(scratch, counter, settings, subjects, "summarize this whole document", subject)
                 results[name] = {"seconds": seconds, "condensing_calls": answer.model_calls_condensing,
