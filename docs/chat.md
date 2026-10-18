@@ -62,7 +62,9 @@ move" question went from rank 7 to 5, no question got worse, the gate let throug
 LM Studio's loaded context is read from `GET /api/v0/models` (`SB_CHAT_CONTEXT_TOKENS` overrides it). Tokens are estimated at 3 characters each and tightened from the server's
 `prompt_tokens`. After the answer reserve (`SB_CHAT_MAX_ANSWER_TOKENS`, 700), history may use at most a quarter of what is left (oldest turns dropped first) and sources the rest (lowest ranked dropped first,
 the best one shortened rather than dropped). If not even one shortened source fits, chat fails with the numbers ("the loaded context is 1100 tokens but chat needs at least 1194 ...").
-A real prompt uses 1,400-1,650 tokens of 13,721 (about 12%); a 2,400-token context left out 2 sources with a warning.
+A real question prompt uses 1,400-1,650 tokens. The loaded context was 13,721 tokens when this was first measured and is **about 40,000 (40,223) since the memory split was changed
+(2026-10-18)**; everything under "Overview questions" below was measured at 40,223. A 2,400-token context left out 2 sources with a warning. A larger context means whole documents of
+roughly 30,000 tokens (about 12 dense pages) fit without any condensing; only longer ones are condensed.
 
 ## Overview questions ("summarize the entire paper", "what is this worksheet about", "buod ng papel na ito")
 
@@ -79,11 +81,22 @@ reply with a number or part of a title. So "summarize this handout" right after 
 | tier | when | what the model sees | note shown to the student |
 |---|---|---|---|
 | full | every page fits | the pages as read | "overview of ..., not an answer found on one page" |
-| condensed | does not fit, at most 30 pages, at least 150 tokens a page | each page shortened by one model call to key points, at most 800 characters | "I summarized each page first ... fine details may be missing" |
-| summary | more than 30 pages or less than 150 tokens a page | the stored summary written at ingest | "too long to read at once ... uses its stored summary only; details are missing" |
+| condensed | does not fit, at most 30 pages, at least 150 tokens a page | each page shortened to key points, at most 800 characters, **four pages per model call** | "I summarized each page first ... fine details may be missing" |
+| summary | more than 30 pages or less than 150 tokens a page | nothing: the stored summary written at ingest is **shown as it is**, with no model call | "too long to read at once ... uses its stored summary only; details are missing" |
 
 Pages are never silently dropped: the tier is stated in the answer, and a page that could not be condensed is only shortened and counted in a note. The 800-character cap
 exists because 2,800-character pages took 22 s a call, so a 14-page document took 5.6 minutes.
+
+**Condensing in groups.** The model gets up to 4 pages (and at most half the context, a page over that goes alone) and must answer with one section per page, each starting with a line
+`PAGE n`. The reply is accepted only if it holds exactly the expected page numbers once each, in order, none empty; each page keeps its own condensed text, so sources and citations stay per page.
+Otherwise (or if the call fails) that group is redone one page per call. Pages already under the limit are not sent. Progress shows "Summarizing pages 1-4 of 14 ...".
+The half-context cap exists because a first version grouped by page count only: with pages of about 10,000 tokens every group prompt filled the whole context, overflowed, and fell back,
+giving 18 calls and 931 s for 14 pages.
+
+**Stored-summary tier.** An overview of an existing document never answers "not in your papers" from this tier: the earlier design gave the summary to the model as a source and the model
+refused it. Now the answer is `Title: <stored summary> [1]` plus the note, and `[1]` opens page 1. A document **without** a stored summary shows the first 600 characters of page 1 and the note
+"has no stored summary, so this shows only the start of page 1" (a blank first page shows "(the first page has no readable text)"). Next to shorter documents the model answers about those, and
+the long one's summary is added to the notes under the answer (the model is not given it and cannot cite it).
 
 **Measured** (`scripts/eval_overview.py --timing`, 2026-10-18, three real sample photos ingested into temporary folders, `qwen3-vl-8b`, loaded context 40,223 tokens):
 
@@ -92,21 +105,19 @@ exists because 2,800-character pages took 22 s a call, so a 14-page document too
 | answerable (13) | 13 / 13 answered |
 | unanswerable (12) and near-miss (6) | 12 / 12 and 6 / 6 refused |
 | non-overview questions detected as overview | 0 |
-| overview (9) | 5 / 9 |
-| per-document overview answer (one page) | 4 - 9 s |
-| 14-page document, condensed (14 condensing calls + 1 answer) | 144.5 s (164 s in a first run) |
-| 40-page document, stored-summary tier | 2.5 s, but the model replied "not in your papers" (see below) |
+| overview (9) | 8 / 9 |
+| 14-page document, condensed | 131.2 s with 5 condensing calls + 1 answer (before grouping: 144.5 s with 14 + 1; the broken first grouping: 931.6 s, 18 + 1) |
+| 40-page document, stored-summary tier | 2.0 s, answered, 0 model calls (before: the model replied "not in your papers") |
 
-- **The 4 overview misses are expectation mismatches, not detection failures.** They are the questions with "this" ("summarize this handout", "what is this worksheet about", Filipino "na ito"
-  and "nito"): they were asked within an hour of ingesting, so "this" means the latest upload, one document, while `questions.json` expects all three. Left unchanged;
-  decide whether "this" should mean the latest or whether the expectation should name that one document.
-- **14 pages take about 2.5 minutes**, about 10 s per condensing call, because each page is its own model call (the answer itself is about 30 s). The progress line says
-  "Summarizing page n of 14 ..." while it works.
-- **The stored-summary tier is not shown to work.** In the 40-page test the model answered `NOT_IN_PAPERS` from the one summary source (the synthetic book's summary does not
-  match its title or subject, which may be part of the cause). Re-test with a real long document before relying on it.
-- The long documents in the timing run are synthetic (the sample pages repeated, sized to overflow the budget by half). A real 14-page reviewer with different text may differ.
-- Run it against **temporary folders** with the samples ingested one file at a time (several files in one `ingest.py once` call are treated as an album and fail); an index holding fewer
-  than the three samples makes the overview and answerable results meaningless.
+- **Overview 8/9.** "this / ito / nito" questions now expect the latest upload when it is under 60 minutes old (all of up to 3 older documents, or "asks which paper" for more); the program's
+  behaviour was not changed. The one miss, "tungkol saan ang worksheet" (11.5 s), was answered but cited no source; it passed in the earlier run, so an uncited answer to an overview
+  question is a real, intermittent weakness (the usual "no source was cited" note is shown). Not investigated further.
+- **The 14-page case is a stress test.** Its pages are about 4,000 tokens each (the three sample pages repeated until the document overflows 40,223 tokens by half), 56,000+ tokens in all.
+  Real handout pages are 500-1,500 tokens, so a real 14-page reviewer (about 15,000 tokens) fits whole and is never condensed. Condensing matters for documents above roughly 30,000 tokens.
+  The 131 s is mostly reading that much text: a normal-size group of four pages takes about 14 s, a group of four 29,000-character pages about 54 s. Whole-answer time after condensing is about 30 s.
+- With "this" and more than 3 old documents the student is asked which paper; with up to 3 old documents all are summarised together (covered by tests, and by the evaluation's resolved expectations).
+- Run it against **temporary folders** with the samples ingested one file at a time (several files in one `ingest.py once` call are rejected unless `--album`, see `docs/ingest.md`). An index holding
+  fewer or more documents than the three samples changes the overview results (4+ documents make "summary of the entire paper" ask which paper): the evaluation index must be exactly the samples.
 
 ## Reliability notes
 

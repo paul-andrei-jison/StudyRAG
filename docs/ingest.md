@@ -83,3 +83,19 @@ the backoff when the real server was reachable. Searching the filed documents wi
 - Photos are read one at a time (one local GPU), about 15-25 s per page plus the title call.
 - Handwriting, tables, formulas and multi-column pages are untested on real photos beyond the bake-off pages.
 - The Telegram bot (chunk 7) must hold the original bytes in `_Unsorted` itself until it calls `submit()`.
+
+## Several files in one submit (checked 2026-10-18, real run on copies; not changed)
+
+One `submit()` / `ingest.py once` call is ONE job, and a job is ONE document. `is_album` is the only thing that says the files are pages of that document.
+
+- **Several files, not an album:** the job's hash is that of the FIRST file only. If the first file is already in the library the whole job is reported `duplicate` and ALL files
+  (including new ones) are moved to `data/duplicates/`: the new pages are kept but never read or indexed (seen: an indexed photo plus a new one gave `DUPLICATE`, both ended up in `duplicates/`).
+  If the first file is new, `load_document` refuses with "Several files were submitted as one document but not as an album", the job goes to `data/failed/` with all files, nothing is
+  read or indexed, and `retry-failed` fails the same way.
+- **Several files as an album:** always ONE document: pages 1..n in the order given, one subject, one title and one summary (written from an excerpt of all pages, in practice
+  dominated by the first), one hash of the page hashes. Three unrelated worksheets sent this way became "Earth's Life-Supporting Features, 3 pages" with a summary of the first sheet.
+  Citations still name the right page, but deleting, changing the subject or an overview question ("summarize this worksheet") acts on all three together, and sending one of them
+  again later is not recognised as a duplicate (it is a different hash).
+- **For Chunk 7 (Telegram):** submit every received photo as its own job by default. Telegram marks photos sent together with a `media_group_id`, but three different worksheets sent in
+  one go look exactly like three pages of one, so the bot must not guess: make an album only when the student asks (a caption such as `album`, or a reply to a "one document or separate?" prompt).
+  Also worth a small fix there or earlier: make `submit()` raise for several paths without `is_album=True`, so the "first file decides" case cannot send new pages to `duplicates/`.
