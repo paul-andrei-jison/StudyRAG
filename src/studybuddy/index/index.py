@@ -187,6 +187,21 @@ class Index:
         if subject is not None:
             self.vectors.update_subject(doc_id, subject_key(subject))
 
+    @_serialized
+    def relocate_document(self, doc_id: int, subject: str, mapping: dict[str, str]) -> None:
+        """Subject and paths of a document that was moved on disk, as one step: if the vector store cannot follow, the
+        SQLite rows are put back and the error is raised, so the two stores never disagree."""
+        doc = self.store.get_document(doc_id)
+        if doc is None:
+            raise IndexStoreError(f"No document with id {doc_id}")
+        old_subject = doc.subject
+        self.store.rewrite_paths(doc_id, subject, mapping)
+        try:
+            self.vectors.update_subject(doc_id, subject_key(subject))
+        except BaseException:
+            self.store.rewrite_paths(doc_id, old_subject, {new: old for old, new in mapping.items()})
+            raise
+
     def set_subject(self, doc_id: int, subject: str) -> None:
         self.update_document(doc_id, subject=subject)
 

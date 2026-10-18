@@ -256,6 +256,31 @@ class Store:
                 db.execute("UPDATE documents SET file_path = ? WHERE id = ?", (file_path, doc_id))
             return [r["id"] for r in db.execute("SELECT id FROM chunks WHERE doc_id = ?", (doc_id,))]
 
+    def rewrite_paths(self, doc_id: int, subject: str, mapping: dict[str, str]) -> None:
+        """Give a document another subject and point every stored path at its new place, in ONE transaction.
+
+        `mapping` is old path -> new path (the document's file or folder and each page file). Covers documents.file_path,
+        pages.image_path, the source_path inside pages.record_json and chunks.image_path; nothing changes if any step fails."""
+        with self.transaction() as db:
+            doc = db.execute("SELECT file_path FROM documents WHERE id = ?", (doc_id,)).fetchone()
+            if doc is None:
+                raise IndexStoreError(f"No document with id {doc_id}")
+            key = subject_key(subject)
+            db.execute("UPDATE documents SET subject = ?, subject_key = ?, file_path = ? WHERE id = ?",
+                       (subject, key, mapping.get(doc["file_path"], doc["file_path"]), doc_id))
+            db.execute("UPDATE chunks SET subject = ?, subject_key = ? WHERE doc_id = ?", (subject, key, doc_id))
+            for page in db.execute("SELECT id, image_path, record_json FROM pages WHERE doc_id = ?", (doc_id,)).fetchall():
+                try:
+                    record = json.loads(page["record_json"] or "{}")
+                except ValueError:
+                    record = {}
+                if isinstance(record, dict) and record.get("source_path") in mapping:
+                    record["source_path"] = mapping[record["source_path"]]
+                db.execute("UPDATE pages SET image_path = ?, record_json = ? WHERE id = ?",
+                           (mapping.get(page["image_path"], page["image_path"]), json.dumps(record, default=str), page["id"]))
+            for old, new in mapping.items():
+                db.execute("UPDATE chunks SET image_path = ? WHERE doc_id = ? AND image_path = ?", (new, doc_id, old))
+
     # ---- reads ----------------------------------------------------------------------------
 
     def documents(self) -> list[DocumentRow]:
