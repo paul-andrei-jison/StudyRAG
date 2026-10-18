@@ -5,7 +5,8 @@ Each document gets an equal share of the tokens left for sources. Within its sha
   condensed  every page is first reduced to its key points, GROUP_PAGES pages per model call (one labelled "PAGE n" section each,
              so the sources stay the real pages and citations still open them), when the share allows at least MIN_PAGE_TOKENS per page and there are
              at most MAX_CONDENSE_PAGES pages;
-  summary    as its stored summary alone (one source pointing at page 1), when it is longer than that.
+  summary    as its stored summary alone (one source pointing at page 1), when it is longer than that; the session shows that text
+             as it is and never asks the model about it (a document without one shows the start of page 1).
 The caller tells the student which tier was used.
 """
 from __future__ import annotations

@@ -39,8 +39,13 @@ HANDWRITING_QUESTION = re.compile(
     r"\b(name|names|date|dates|score|scores|section|teacher|grade|answer key|which letter|what letter|my answers?|i answered|who wrote)\b",
     re.IGNORECASE)
 MIN_DOC_TOKENS = 200        # each document in an overview needs at least this much room in the context
-HEADING_RESERVE = 60
+NO_SUMMARY_CHARS = 600      # a very long document with no stored summary: this much of page 1 is shown instead
 HANDWRITING_NOTE = "Handwritten names, dates, scores and answer letters may be read wrongly: check them against the photo."
+
+
+def _cut_text(text: str, limit: int) -> str:
+    flat = " ".join((text or "").split())
+    return flat if len(flat) <= limit else flat[:limit].rsplit(" ", 1)[0].rstrip() + " ..."
 
 
 class ChatClient(Protocol):
@@ -239,7 +244,9 @@ class ChatSession:
         if available < len(target.docs) * MIN_DOC_TOKENS:
             raise too_small(context, reserve + system_tokens + len(target.docs) * MIN_DOC_TOKENS, reserve)
         share = available // len(target.docs)
-        sources: list[Source] = []
+        sources: list[Source] = []         # read by the model
+        stored: list[Source] = []          # very long documents: their stored summary, shown without the model
+        stored_docs: list[DocumentRow] = []
         for doc in target.docs:
             pages = self.index.store.pages(doc.id)
             if not pages:
@@ -263,24 +270,52 @@ class ChatSession:
                 if fallbacks:
                     answer.overview_notes.append(f"{fallbacks} page(s) of '{doc.title}' could not be summarized and were only shortened.")
             elif plan.tier == SUMMARY:
-                text = (doc.summary or "").strip() or drafts[0].text
-                limit = self.estimator.chars_for(share - HEADING_RESERVE)
-                drafts = drafts[:1]
-                drafts[0].text = text if len(text) <= limit else text[:limit].rstrip() + " ..."
-                answer.overview_notes.append(
-                    f"'{doc.title}' is too long to read at once ({doc.page_count} pages), so this uses its stored summary only; "
-                    f"details are missing. Ask about a specific part for more.")
+                # never sent to the model (it may turn a summary into "not in your papers"): the stored text is shown as it is
+                first, summary = drafts[0], (doc.summary or "").strip()
+                if summary:
+                    first.text = summary
+                    answer.overview_notes.append(
+                        f"'{doc.title}' is too long to read at once ({doc.page_count} pages), so this uses its stored summary only; "
+                        f"details are missing. Ask about a specific part for more.")
+                else:
+                    first.text = _cut_text(first.text, NO_SUMMARY_CHARS) or "(the first page has no readable text)"
+                    answer.overview_notes.append(
+                        f"'{doc.title}' is too long to read at once ({doc.page_count} pages) and has no stored summary, so this shows only "
+                        f"the start of page 1; details are missing. Ask about a specific part for more.")
+                stored.append(first)
+                stored_docs.append(doc)
+                continue
             sources.extend(drafts)
-        if not sources:
+        if not sources and not stored:
             yield from self._refuse(question, answer, [], "the chosen papers have no readable pages", started)
             return
-        for number, source in enumerate(sources, 1):
+        for number, source in enumerate([*sources, *stored], 1):
             source.number = number
         titles = "; ".join(f"'{d.title or d.file_path}' ({d.page_count} page{'s' if d.page_count != 1 else ''})" for d in target.docs)
         answer.overview_notes.insert(0, f"This is an overview of {titles}, not an answer found on one page.")
-        answer.sources = sources
+        if not sources:
+            yield from self._stored_only(question, answer, stored, started)
+            return
+        for doc, source in zip(stored_docs, stored):         # mixed with documents the model reads: shown after its answer, with the notes
+            answer.overview_notes.append(f"Stored summary of '{doc.title}' ({doc.page_count} pages, details may be missing): {source.text}")
+        answer.sources = [*sources, *stored]
         messages = build_messages(question, sources, [], system=OVERVIEW_SYSTEM_PROMPT)
-        yield from self._stream_answer(question, messages, answer, started)
+        yield from self._stream_answer(question, messages, answer, started, cite_limit=len(sources))
+
+    def _stored_only(self, question: str, answer: ChatAnswer, stored: list[Source], started: float) -> Iterator[str | ChatAnswer]:
+        """Every chosen document is too long to read: the answer is the stored summaries themselves, so no model call and no refusal."""
+        answer.sources = stored
+        body = "\n\n".join(f"{s.title or s.file_path}: {s.text} [{s.number}]" for s in stored)
+        answer.cited = [s.number for s in stored]
+        for source in stored:
+            source.cited = True
+        notes = self._notes(question, answer, body)
+        answer.notes = notes
+        answer.text = body + ("\n\n" + "\n".join(notes) if notes else "")
+        answer.total_seconds = round(self.clock() - started, 2)
+        yield answer.text
+        self._remember(question, body, answer)
+        yield answer
 
     @staticmethod
     def _page_source(doc: DocumentRow, page) -> Source:
@@ -329,8 +364,9 @@ class ChatSession:
         yield text
         yield answer
 
-    def _stream_answer(self, question: str, messages: list[dict], answer: ChatAnswer, started: float) -> Iterator[str | ChatAnswer]:
-        citations = CitationFilter(len(answer.sources))
+    def _stream_answer(self, question: str, messages: list[dict], answer: ChatAnswer, started: float,
+                       cite_limit: int | None = None) -> Iterator[str | ChatAnswer]:
+        citations = CitationFilter(len(answer.sources) if cite_limit is None else cite_limit)   # the model may cite only what it was given
         watch = _RefusalWatch()
         shown: list[str] = []
         usage: dict | None = None

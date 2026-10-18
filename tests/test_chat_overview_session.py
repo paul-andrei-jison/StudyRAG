@@ -296,19 +296,80 @@ def test_a_reply_that_cannot_be_split_is_redone_one_page_per_call_and_every_page
     assert all(s.text == "short points" for s in final.sources) and final.status == ANSWERED
 
 
-def test_a_very_long_document_falls_back_to_its_stored_summary_and_says_so(settings, tmp_path):
+REALISTIC_SUMMARY = ("The handout explains how Earth's unique combination of liquid water, atmosphere, magnetic field, geology, climate, and "
+                     "biosphere supports life. It highlights the interconnectedness of these systems and how human activities can impact them.")
+
+
+def huge_book(settings, tmp_path, summary=REALISTIC_SUMMARY, title="Huge book", first_page=None, others=()):
+    """A 40-page Math document (summary tier at a 2,400-token context), plus any `others` as (key, text, title) in Math too."""
     setup = make_setup(settings, tmp_path)
+    pages = [long_text(5) for _ in range(40)]
+    if first_page is not None:
+        pages[0] = first_page
+    add_doc(setup.index, "huge", "", subject="Math", title=title, summary=summary, pages=pages)
+    for key, text, other_title in others:
+        add_doc(setup.index, key, text, subject="Math", title=other_title)
+    names = SubjectList(setup.settings.data_dir / "subjects.json", ["Science", "Math"])
+    return setup, names
+
+
+@pytest.mark.parametrize("question", ["summarize the whole paper", "give me a summary of the entire paper", "what is this worksheet about"])
+def test_a_very_long_document_is_answered_with_its_stored_summary_without_asking_the_model(settings, tmp_path, question):
+    setup, names = huge_book(settings, tmp_path)
     try:
-        add_doc(setup.index, "huge", "", subject="Math", title="Huge book", summary="A whole year of algebra, from linear equations to quadratics.",
-                pages=[long_text(5) for _ in range(40)])
-        names = SubjectList(setup.settings.data_dir / "subjects.json", ["Science", "Math"])
-        client = Spy([["Algebra from linear to quadratic ", "[1]", "."]], context=2400)
+        client = Spy([["NOT_IN_PAPERS"]], context=2400)               # a model that would refuse if it were asked
+        session = setup.session(client, subjects=names, gate=STRICT)
+        session.set_subject("Math")
+        final = session.ask(question)
+        assert final.status == ANSWERED and final.mode == OVERVIEW and final.cited == [1] and not final.uncited
+        assert client.chat_calls == [] and client.stream_calls == [] and final.model_calls_condensing == 0
+        assert final.text.startswith("Huge book: " + REALISTIC_SUMMARY + " [1]")                    # the stored text, word for word
+        assert len(final.sources) == 1 and final.sources[0].page_number == 1 and final.sources[0].cited
+        assert any("stored summary only" in n and "40 pages" in n and "details are missing" in n for n in final.notes)
+        assert final.text.endswith(final.notes[-1]) and session.history[-1].answer.startswith("Huge book: ")
+    finally:
+        setup.index.close()
+
+
+def test_a_very_long_document_without_a_stored_summary_shows_the_start_of_page_one_and_says_so(settings, tmp_path):
+    setup, names = huge_book(settings, tmp_path, summary="", first_page="Chapter 1. Linear equations. " * 60)
+    try:
+        client = Spy([["NOT_IN_PAPERS"]], context=2400)
         session = setup.session(client, subjects=names, gate=STRICT)
         session.set_subject("Math")
         final = session.ask("summarize the whole paper")
-        assert len(final.sources) == 1 and final.sources[0].text.startswith("A whole year of algebra") and final.sources[0].page_number == 1
-        assert client.chat_calls == [] and final.model_calls_condensing == 0
-        assert any("stored summary only" in n and "40 pages" in n for n in final.notes) and final.cited == [1]
+        assert final.status == ANSWERED and client.stream_calls == [] and client.chat_calls == []
+        body = final.text.split("\n\n")[0]
+        assert body.startswith("Huge book: Chapter 1. Linear equations.") and body.endswith("... [1]") and len(body) < 700
+        assert any("no stored summary" in n and "start of page 1" in n and "details are missing" in n for n in final.notes)
+    finally:
+        setup.index.close()
+
+
+def test_a_very_long_document_with_no_summary_and_a_blank_first_page_still_answers(settings, tmp_path):
+    setup, names = huge_book(settings, tmp_path, summary="   ", first_page="")
+    try:
+        session = setup.session(Spy(context=2400), subjects=names, gate=STRICT)
+        session.set_subject("Math")
+        final = session.ask("summarize the whole paper")
+        assert final.status == ANSWERED and "(the first page has no readable text) [1]" in final.text and "no stored summary" in final.notes[-1]
+    finally:
+        setup.index.close()
+
+
+def test_a_very_long_document_next_to_a_short_one_gets_its_stored_summary_after_the_models_answer(settings, tmp_path):
+    setup, names = huge_book(settings, tmp_path, others=[("oceans", "Water covers most of the surface.", "Ocean facts")])
+    try:
+        client = Spy([["Water covers the surface ", "[1]", ". And a stray ", "[2]", "."]], context=2400)
+        session = setup.session(client, subjects=names, gate=STRICT)
+        session.set_subject("Math")
+        final = session.ask("give me a summary of the entire paper")
+        assert final.status == ANSWERED and len(client.stream_calls) == 1, (final.text, [s.title for s in final.sources])
+        prompt = client.stream_calls[0][-1]["content"]
+        assert "Water covers" in prompt and REALISTIC_SUMMARY not in prompt                       # the long one is not given to the model
+        assert final.invalid_citations == [2] and final.cited == [1]                              # it can cite only what it was given
+        assert [s.title for s in final.sources] == ["Ocean facts", "Huge book"]
+        assert any(n.startswith("Stored summary of 'Huge book' (40 pages") and REALISTIC_SUMMARY in n for n in final.notes)
     finally:
         setup.index.close()
 
