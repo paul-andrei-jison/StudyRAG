@@ -121,7 +121,13 @@ class ChatSession:
 
     def context_tokens(self) -> int:
         if self._context is None:
-            self._context = resolve_context_tokens(self.client, self.settings)
+            try:
+                self._context = resolve_context_tokens(self.client, self.settings)
+            except ChatContextError:
+                # LM Studio only reports a LOADED model's context. If it was unloaded (idle for long), a tiny request
+                # makes it load the model; if LM Studio is off that raises TransientLLMError, which is the right message.
+                self.client.chat([{"role": "user", "content": "Reply with OK."}], temperature=0.0, max_tokens=4)
+                self._context = resolve_context_tokens(self.client, self.settings)
         return self._context
 
     # ---- asking ----------------------------------------------------------------------------

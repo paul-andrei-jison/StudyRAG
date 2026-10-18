@@ -265,8 +265,34 @@ def test_the_configured_context_override_is_used_without_asking_the_server(setup
 
 
 def test_unknown_context_is_a_clear_error(setup):
+    class StaysUnloaded(ScriptedClient):
+        def chat(self, messages, temperature=0.0, max_tokens=None):
+            return "OK"                          # the wake-up request is answered but the context is still not reported
+
     with pytest.raises(ChatContextError, match="SB_CHAT_CONTEXT_TOKENS"):
-        setup.session(ScriptedClient(context=None)).ask(QUESTION)
+        setup.session(StaysUnloaded(context=None)).ask(QUESTION)
+
+
+def test_an_unloaded_model_is_woken_with_a_tiny_request_and_the_context_is_then_read(setup):
+    class Unloaded(ScriptedClient):
+        def chat(self, messages, temperature=0.0, max_tokens=None):
+            if messages[-1]["content"] == "Reply with OK.":
+                self.context = 13_721            # the request made LM Studio load the model
+                return "OK"
+            return super().chat(messages, temperature, max_tokens)
+
+    client = Unloaded([GOOD], context=None)
+    final = setup.session(client).ask(QUESTION)
+    assert final.context_tokens == 13_721 and final.status == ANSWERED
+
+
+def test_waking_an_unloaded_model_reports_lm_studio_being_off(setup):
+    class Off(ScriptedClient):
+        def chat(self, messages, temperature=0.0, max_tokens=None):
+            raise TransientLLMError("Cannot reach LM Studio")
+
+    with pytest.raises(TransientLLMError):
+        setup.session(Off(context=None)).ask(QUESTION)
 
 
 def test_a_server_side_context_overflow_is_reported_as_a_context_problem(setup):
